@@ -7,6 +7,7 @@ from pathlib import Path
 from rust_sensei.logging_config import configure_logging
 from rust_sensei.repositories.json_repository import JsonRepositoryFactory, default_state_dir
 from rust_sensei.services.environment import EnvironmentProbe
+from rust_sensei.services.lesson_service import LessonService
 from rust_sensei.services.session_service import SessionService
 from rust_sensei.services.setup_service import SetupService
 
@@ -25,6 +26,14 @@ class ServiceFactory:
     def session_service(self) -> SessionService:
         return SessionService(
             learner_repository=self._repositories.learner_repository(),
+            now=self._now,
+        )
+
+    def lesson_service(self) -> LessonService:
+        return LessonService(
+            learner_repository=self._repositories.learner_repository(),
+            assignment_repository=self._repositories.assignment_repository(),
+            curriculum_repository=self._repositories.curriculum_repository(),
             now=self._now,
         )
 

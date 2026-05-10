@@ -2,7 +2,9 @@ from __future__ import annotations
 
 from typing import Protocol
 
+from rust_sensei.domain.curriculum import Concept, Curriculum
 from rust_sensei.domain.learner import LearnerProfile
+from rust_sensei.domain.lesson import LessonAssignment
 
 
 class LearnerRepository(Protocol):
@@ -16,4 +18,29 @@ class LearnerRepository(Protocol):
         ...
 
     def create_profile_if_absent(self, profile: LearnerProfile) -> LearnerProfile:
+        ...
+
+
+class AssignmentRepository(Protocol):
+    def save_assignment(self, assignment: LessonAssignment) -> None:
+        ...
+
+    def create_active_assignment_if_absent(
+        self,
+        assignment: LessonAssignment,
+    ) -> tuple[LessonAssignment, bool]:
+        ...
+
+    def get_assignment(self, assignment_id: str) -> LessonAssignment | None:
+        ...
+
+    def get_active_assignment(self, learner_id: str) -> LessonAssignment | None:
+        ...
+
+
+class CurriculumRepository(Protocol):
+    def get_curriculum(self) -> Curriculum:
+        ...
+
+    def get_concept(self, concept_id: str) -> Concept | None:
         ...
