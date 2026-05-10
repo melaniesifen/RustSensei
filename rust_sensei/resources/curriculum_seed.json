@@ -1,4 +1,193 @@
 {
   "curriculum_version": "0.1.0",
-  "concepts": []
+  "concepts": [
+    {
+      "concept_id": "cargo_hello_world",
+      "title": "Cargo And Hello World",
+      "order": 10,
+      "default_difficulty": "intro",
+      "learner_command": "cargo run",
+      "rubric_ids": [
+        "rust_correctness",
+        "compiler_error_handling"
+      ],
+      "variants": [
+        {
+          "variant_id": "intro_001",
+          "difficulty": "intro",
+          "prompt": "Create a Cargo binary project that prints Hello, Rust Sensei.",
+          "success_criteria": [
+            "The project builds with Cargo",
+            "Running the program prints the requested message"
+          ],
+          "hints": [
+            "Use cargo new to create a binary project",
+            "Put the println! call in src/main.rs"
+          ],
+          "lesson_commands": [
+            {
+              "command": "cargo run",
+              "purpose": "Run the learner's first Rust program",
+              "risk_level": "low",
+              "required": true,
+              "allowed_for_agent_verification": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "concept_id": "variables_primitive_types",
+      "title": "Variables And Primitive Types",
+      "order": 20,
+      "default_difficulty": "guided",
+      "learner_command": "cargo run",
+      "rubric_ids": [
+        "rust_correctness",
+        "rust_idioms",
+        "readability",
+        "compiler_error_handling"
+      ],
+      "variants": [
+        {
+          "variant_id": "guided_001",
+          "difficulty": "guided",
+          "prompt": "Declare and print 3 immutable variables with different primitive types.",
+          "success_criteria": [
+            "The program compiles",
+            "At least 3 primitive values are declared and printed",
+            "Variable names describe the values they hold"
+          ],
+          "hints": [
+            "Start with let bindings",
+            "Use println! to print each value"
+          ],
+          "lesson_commands": [
+            {
+              "command": "cargo run",
+              "purpose": "Run the learner's variable practice program",
+              "risk_level": "low",
+              "required": true,
+              "allowed_for_agent_verification": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "concept_id": "ownership_borrowing_intro",
+      "title": "Ownership And Borrowing Introduction",
+      "order": 70,
+      "default_difficulty": "standard",
+      "learner_command": "cargo check",
+      "rubric_ids": [
+        "rust_correctness",
+        "rust_idioms",
+        "problem_solving",
+        "compiler_error_handling"
+      ],
+      "variants": [
+        {
+          "variant_id": "standard_001",
+          "difficulty": "standard",
+          "prompt": "Write a small program that passes a String by reference to a helper function, then uses the String again.",
+          "success_criteria": [
+            "The program compiles",
+            "A helper function borrows a String reference",
+            "The original String remains usable after the function call"
+          ],
+          "hints": [
+            "Use &String or &str for the helper parameter",
+            "Run cargo check before cargo run"
+          ],
+          "lesson_commands": [
+            {
+              "command": "cargo check",
+              "purpose": "Check ownership and borrowing behavior",
+              "risk_level": "low",
+              "required": true,
+              "allowed_for_agent_verification": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "concept_id": "traits_generics_testing",
+      "title": "Traits, Generics, And Testing",
+      "order": 100,
+      "default_difficulty": "challenge",
+      "learner_command": "cargo test",
+      "rubric_ids": [
+        "rust_correctness",
+        "rust_idioms",
+        "maintainability",
+        "problem_solving"
+      ],
+      "variants": [
+        {
+          "variant_id": "challenge_001",
+          "difficulty": "challenge",
+          "prompt": "Implement a generic helper function with a trait bound and add one unit test for it.",
+          "success_criteria": [
+            "The generic function compiles",
+            "The trait bound is necessary for the operation",
+            "At least 1 unit test passes"
+          ],
+          "hints": [
+            "Keep the generic function small",
+            "Use cargo test to run the unit test"
+          ],
+          "lesson_commands": [
+            {
+              "command": "cargo test",
+              "purpose": "Run the learner's unit test",
+              "risk_level": "low",
+              "required": true,
+              "allowed_for_agent_verification": true
+            }
+          ]
+        }
+      ]
+    },
+    {
+      "concept_id": "advanced_design_review",
+      "title": "Advanced Rust Design Review",
+      "order": 110,
+      "default_difficulty": "advanced",
+      "learner_command": "cargo test",
+      "rubric_ids": [
+        "rust_correctness",
+        "rust_idioms",
+        "maintainability",
+        "problem_solving"
+      ],
+      "variants": [
+        {
+          "variant_id": "advanced_001",
+          "difficulty": "advanced",
+          "prompt": "Build a small Rust module with a public API, internal helper, and tests, then explain the API tradeoffs.",
+          "success_criteria": [
+            "The module compiles",
+            "Public and private responsibilities are separated",
+            "Tests cover the main behavior",
+            "The design explanation names at least 1 tradeoff"
+          ],
+          "hints": [
+            "Keep the API narrow",
+            "Use tests to show expected behavior"
+          ],
+          "lesson_commands": [
+            {
+              "command": "cargo test",
+              "purpose": "Run the learner's module tests",
+              "risk_level": "low",
+              "required": true,
+              "allowed_for_agent_verification": true
+            }
+          ]
+        }
+      ]
+    }
+  ]
 }

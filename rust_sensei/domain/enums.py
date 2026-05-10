@@ -13,3 +13,10 @@ class SetupCheckStatus(str, Enum):
     OK = "ok"
     WARNING = "warning"
     ERROR = "error"
+
+
+class AssignmentStatus(str, Enum):
+    ACTIVE = "active"
+    ATTEMPTED = "attempted"
+    ASSESSED = "assessed"
+    ABANDONED = "abandoned"
