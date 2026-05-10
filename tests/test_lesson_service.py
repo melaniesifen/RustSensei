@@ -112,6 +112,7 @@ def _services(tmp_path):
         LessonService(
             learner_repository=repositories.learner_repository(),
             assignment_repository=repositories.assignment_repository(),
+            attempt_repository=repositories.attempt_repository(),
             curriculum_repository=repositories.curriculum_repository(),
             now=now,
         ),

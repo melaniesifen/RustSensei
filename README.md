@@ -23,9 +23,10 @@ This repository contains design documentation and the first Python implementatio
 - JSON learner profile repository with atomic state writes.
 - Session service for placement and active profile retrieval.
 - Lesson assignment service for the first `get_next_lesson` flow.
+- Attempt submission service for the first `submit_attempt` flow.
 - Setup service for Python, Cargo, and state directory diagnostics.
 - Daily append-only file logging under the configured state directory.
-- Initial tests for session, lesson assignment, setup, and JSON state behavior.
+- Initial tests for session, lesson assignment, attempt submission, setup, and JSON state behavior.
 
 ## Developer Setup
 

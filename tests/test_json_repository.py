@@ -6,7 +6,7 @@ from rust_sensei.domain.enums import RustLevel
 from rust_sensei.domain.learner import LearnerProfile
 from rust_sensei.domain.skill import SkillModel
 from rust_sensei.dto.session import StartSessionRequest
-from rust_sensei.errors import StorageError
+from rust_sensei.errors import IdempotencyConflictError, StorageError
 from rust_sensei.repositories.json_state import JsonStateStore
 from rust_sensei.repositories.json_repository import JsonRepositoryFactory
 from rust_sensei.services.session_service import SessionService
@@ -221,6 +221,161 @@ def test_assignment_lifecycle_lookup_uses_latest_assignment_status(tmp_path):
 
     assert repository.get_assignment("assign_000001") == assessed
     assert repository.get_active_assignment("local-default") is None
+
+
+def test_attempt_repository_saves_attempt_and_assignment_status_atomically(tmp_path):
+    from rust_sensei.domain.attempt import AttemptSubmission
+    from rust_sensei.domain.enums import AssignmentStatus
+    from rust_sensei.domain.lesson import LessonAssignment
+
+    repositories = JsonRepositoryFactory(tmp_path)
+    assignment = LessonAssignment(
+        assignment_id="assign_000001",
+        learner_id="local-default",
+        lesson_id="lesson_1",
+        concept_id="cargo_hello_world",
+        difficulty="intro",
+        variant_id="intro_001",
+        status=AssignmentStatus.ATTEMPTED,
+        selection_rationale="test",
+        curriculum_version="0.1.0",
+        created_at=_fixed_now(),
+        updated_at=_fixed_now(),
+    )
+    attempt = AttemptSubmission(
+        attempt_id="",
+        learner_id="local-default",
+        assignment_id="assign_000001",
+        lesson_id="lesson_1",
+        client_request_id="req-1",
+        client_request_fingerprint="fingerprint",
+        workspace_root=None,
+        code="fn main() {}",
+        submitted_at=_fixed_now(),
+    )
+
+    saved, created = repositories.attempt_repository().save_attempt_for_assignment(
+        attempt,
+        assignment,
+    )
+
+    assert created is True
+    assert saved.attempt_id == "attempt_000001"
+    assert repositories.attempt_repository().get_attempt(saved.attempt_id) == saved
+    assert repositories.attempt_repository().get_attempt_by_client_request_id(
+        "local-default",
+        "req-1",
+    ) == saved
+    assert repositories.assignment_repository().get_assignment(
+        "assign_000001"
+    ) == assignment
+
+
+def test_attempt_repository_enforces_idempotency_inside_transaction(tmp_path):
+    from rust_sensei.domain.attempt import AttemptSubmission
+    from rust_sensei.domain.enums import AssignmentStatus
+    from rust_sensei.domain.lesson import LessonAssignment
+
+    repositories = JsonRepositoryFactory(tmp_path)
+    assignment = LessonAssignment(
+        assignment_id="assign_000001",
+        learner_id="local-default",
+        lesson_id="lesson_1",
+        concept_id="cargo_hello_world",
+        difficulty="intro",
+        variant_id="intro_001",
+        status=AssignmentStatus.ATTEMPTED,
+        selection_rationale="test",
+        curriculum_version="0.1.0",
+        created_at=_fixed_now(),
+        updated_at=_fixed_now(),
+    )
+    first = AttemptSubmission(
+        attempt_id="",
+        learner_id="local-default",
+        assignment_id="assign_000001",
+        lesson_id="lesson_1",
+        client_request_id="req-1",
+        client_request_fingerprint="same",
+        workspace_root=None,
+        code="fn main() {}",
+        submitted_at=_fixed_now(),
+    )
+    second = AttemptSubmission(
+        attempt_id="",
+        learner_id="local-default",
+        assignment_id="assign_000001",
+        lesson_id="lesson_1",
+        client_request_id="req-1",
+        client_request_fingerprint="same",
+        workspace_root=None,
+        code="fn main() {}",
+        submitted_at=_fixed_now(),
+    )
+
+    saved, created = repositories.attempt_repository().save_attempt_for_assignment(
+        first,
+        assignment,
+    )
+    existing, duplicated = repositories.attempt_repository().save_attempt_for_assignment(
+        second,
+        assignment,
+    )
+
+    assert created is True
+    assert duplicated is False
+    assert existing == saved
+
+
+def test_attempt_repository_rejects_idempotency_conflict_inside_transaction(tmp_path):
+    from rust_sensei.domain.attempt import AttemptSubmission
+    from rust_sensei.domain.enums import AssignmentStatus
+    from rust_sensei.domain.lesson import LessonAssignment
+
+    repositories = JsonRepositoryFactory(tmp_path)
+    assignment = LessonAssignment(
+        assignment_id="assign_000001",
+        learner_id="local-default",
+        lesson_id="lesson_1",
+        concept_id="cargo_hello_world",
+        difficulty="intro",
+        variant_id="intro_001",
+        status=AssignmentStatus.ATTEMPTED,
+        selection_rationale="test",
+        curriculum_version="0.1.0",
+        created_at=_fixed_now(),
+        updated_at=_fixed_now(),
+    )
+    first = AttemptSubmission(
+        attempt_id="",
+        learner_id="local-default",
+        assignment_id="assign_000001",
+        lesson_id="lesson_1",
+        client_request_id="req-1",
+        client_request_fingerprint="first",
+        workspace_root=None,
+        code="fn main() {}",
+        submitted_at=_fixed_now(),
+    )
+    conflicting = AttemptSubmission(
+        attempt_id="",
+        learner_id="local-default",
+        assignment_id="assign_000001",
+        lesson_id="lesson_1",
+        client_request_id="req-1",
+        client_request_fingerprint="second",
+        workspace_root=None,
+        code="fn main() {}",
+        submitted_at=_fixed_now(),
+    )
+
+    repositories.attempt_repository().save_attempt_for_assignment(first, assignment)
+
+    with pytest.raises(IdempotencyConflictError):
+        repositories.attempt_repository().save_attempt_for_assignment(
+            conflicting,
+            assignment,
+        )
 
 
 def test_curriculum_repository_rejects_invalid_curriculum(tmp_path):
