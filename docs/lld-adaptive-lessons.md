@@ -175,8 +175,8 @@ class LessonSelector:
         if context.is_new_session:
             return self.placement_policy.select(context)
 
-        action = context.last_assessment.next_action
-        return self.handlers[action](context)
+        decision = context.last_assessment.next_step_decision
+        return self.handlers[decision.action](context)
 ```
 
 Required v1 handlers:
@@ -190,6 +190,8 @@ Required v1 handlers:
 | `branch` | `select_branch_lesson` | Branch target selected from assessment evidence |
 
 The `LessonSelector` should be the only service that resolves `next_action` to behavior.
+
+`LessonSelectionContext.last_assessment.next_step_decision` must include `action`, `branch_id`, and `reason`. The assessment service persists these as assessment result fields, and the lesson service may expose them as a normalized `next_step_decision` object in selection context so branch targets can be resolved deterministically after assessment.
 
 ### 4.5 Starting Placement
 
@@ -299,6 +301,7 @@ Branch target semantics:
 
 - `branch_targets` keys are stable `branch_id` values.
 - A next-step rule returning `branch` must also return a `branch_id`.
+- The assessment result must persist the selected `branch_id` and next-action reason.
 - `select_branch_lesson` resolves the branch by looking up `concept.branch_targets[branch_id]`.
 - If the current concept does not define the selected `branch_id`, `select_branch_lesson` uses a configured global branch fallback for that `branch_id`.
 - If no concept branch target or global fallback exists, the selector falls back to `repeat` and records an explicit rationale.

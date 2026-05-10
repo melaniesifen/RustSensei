@@ -131,6 +131,13 @@ class LearnerProfileDTO(BaseModel):
     learner_id: str
     rust_level_initial: RustLevel | None
     active_concept_id: str | None
+    skill_summary: dict[str, float] = Field(default_factory=dict)
+
+
+class SkillScoreDTO(BaseModel):
+    score: float
+    confidence: float
+    evidence: list[str] = Field(default_factory=list)
 
 
 class LessonPlanDTO(BaseModel):
@@ -185,12 +192,15 @@ class AssessmentResultDTO(BaseModel):
     assessment_id: str
     attempt_id: str
     assignment_id: str
+    scoring_version: str
     assessment_status: str
-    rubric_scores: dict[str, SkillScore]
+    rubric_scores: dict[str, SkillScoreDTO]
     confidence_breakdown: ConfidenceBreakdownDTO
     missing_evidence: list[str] = Field(default_factory=list)
     feedback_items: list[FeedbackItemDTO] = Field(default_factory=list)
     next_action: NextAction
+    branch_id: str | None = None
+    next_action_reason: str
     feedback_summary: str
     confidence: float
 
@@ -221,6 +231,7 @@ class SubmitAttemptRequest(BaseModel):
     learner_id: str = "local-default"
     assignment_id: str
     client_request_id: str | None = None
+    workspace_root: str | None = None
     code: str | None = None
     file_paths: list[str] = Field(default_factory=list)
     commands_run_by_learner: list[str] = Field(default_factory=list)
@@ -235,6 +246,7 @@ class SubmitAttemptRequest(BaseModel):
     learner_notes: str | None = None
     agent_notes: str | None = None
     learner_execution_missing: bool = False
+    learner_execution_notes: str | None = None
 
 
 class SubmitAttemptResponse(BaseModel):
@@ -249,6 +261,66 @@ class AssessAttemptRequest(BaseModel):
 class AssessAttemptResponse(BaseModel):
     assessment: AssessmentResultDTO
     already_assessed: bool
+
+
+class GetLearnerProfileRequest(BaseModel):
+    learner_id: str = "local-default"
+
+
+class GetLearnerProfileResponse(BaseModel):
+    profile: LearnerProfileDTO
+    skill_model: dict[str, dict[str, SkillScoreDTO]]
+
+
+class ProgressEventDTO(BaseModel):
+    event_id: str
+    event_type: str
+    assignment_id: str | None = None
+    attempt_id: str | None = None
+    assessment_id: str | None = None
+    details: dict = Field(default_factory=dict)
+    created_at: str
+
+
+class GetProgressSummaryRequest(BaseModel):
+    learner_id: str = "local-default"
+
+
+class GetProgressSummaryResponse(BaseModel):
+    learner_id: str
+    active_concept_id: str | None
+    completed_concepts: list[str] = Field(default_factory=list)
+    repeated_concepts: list[str] = Field(default_factory=list)
+    skipped_concepts: list[str] = Field(default_factory=list)
+    recent_events: list[ProgressEventDTO] = Field(default_factory=list)
+    recommended_focus: str | None = None
+
+
+class UpdateLearnerSignalRequest(BaseModel):
+    learner_id: str = "local-default"
+    signal_type: str
+    value: str | float | bool
+    notes: str | None = None
+
+
+class UpdateLearnerSignalResponse(BaseModel):
+    signal_id: str
+    recorded: bool
+
+
+class SetupCheckDTO(BaseModel):
+    check_id: str
+    status: str
+    message: str
+
+
+class GetSetupStatusRequest(BaseModel):
+    learner_id: str = "local-default"
+
+
+class GetSetupStatusResponse(BaseModel):
+    ready: bool
+    checks: list[SetupCheckDTO] = Field(default_factory=list)
 ```
 
 DTO mapping rule: MCP request and response models are Pydantic DTOs. Domain models may use dataclasses internally. Services must map explicitly between API DTOs and domain models instead of returning raw dataclasses through the MCP boundary.
@@ -353,6 +425,7 @@ class AttemptSubmission:
     assignment_id: str
     lesson_id: str
     client_request_id: str | None
+    workspace_root: str | None
     code: str | None
     file_paths: list[str]
     commands_run_by_learner: list[str]
@@ -367,6 +440,7 @@ class AttemptSubmission:
     learner_notes: str | None
     agent_notes: str | None
     learner_execution_missing: bool
+    learner_execution_notes: str | None
     submitted_at: datetime
 
 
@@ -382,6 +456,8 @@ class AssessmentResult:
     missing_evidence: list[str]
     feedback_items: list[FeedbackItem]
     next_action: NextAction
+    branch_id: str | None
+    next_action_reason: str
     feedback_summary: str
     confidence: float
     created_at: datetime
@@ -410,6 +486,16 @@ class ProgressEvent:
     details: dict
     previous_status: str | None
     new_status: str | None
+    created_at: datetime
+
+
+@dataclass
+class LearnerSignal:
+    signal_id: str
+    learner_id: str
+    signal_type: str
+    value: str | float | bool
+    notes: str | None
     created_at: datetime
 ```
 
@@ -444,6 +530,16 @@ class AssessmentRepository(Protocol):
     def save_assessment(self, result: AssessmentResult) -> None: ...
     def get_assessment_by_attempt_id(self, attempt_id: str) -> AssessmentResult | None: ...
     def list_recent_assessments(self, learner_id: str, limit: int) -> list[AssessmentResult]: ...
+
+
+class ProgressEventRepository(Protocol):
+    def save_event(self, event: ProgressEvent) -> None: ...
+    def list_recent_events(self, learner_id: str, limit: int) -> list[ProgressEvent]: ...
+
+
+class LearnerSignalRepository(Protocol):
+    def save_signal(self, signal: LearnerSignal) -> None: ...
+    def list_recent_signals(self, learner_id: str, limit: int) -> list[LearnerSignal]: ...
 
 
 class CurriculumRepository(Protocol):
@@ -618,9 +714,9 @@ Diagram description:
 - Expected behavior: Refuse writes and report the unsupported version.
 - Requirement link: `FR-10`.
 
-### 7.4 Unknown Lesson Or Attempt
+### 7.4 Unknown Assignment Or Attempt
 
-- Trigger: `lesson_id` or `attempt_id` does not exist.
+- Trigger: `assignment_id`, `lesson_id`, or `attempt_id` does not exist.
 - Expected behavior: Return a not-found error and do not update learner state.
 - Requirement link: `FR-08`.
 
