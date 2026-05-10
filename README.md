@@ -26,15 +26,48 @@ This repository contains design documentation and the first Python implementatio
 - Daily append-only file logging under the configured state directory.
 - Initial tests for session, setup, and JSON state behavior.
 
-## Verification
+## Developer Setup
 
-After Python 3.11+ and dependencies are installed:
+Rust Sensei targets Python `3.11+`.
+
+Install the project with developer dependencies:
+
+```bash
+python -m pip install ".[dev]"
+```
+
+The MCP SDK package may be unavailable on some package indexes. The current unit tests cover the implemented service, storage, logging, CLI, and DTO layers without starting the MCP server.
+
+## Unit Tests
+
+Run the unit test suite:
+
+```bash
+python -m pytest
+```
+
+Run tests with coverage:
 
 ```bash
 python -m pytest --cov=rust_sensei --cov-report=term-missing
 ```
 
-Coverage should stay above `85%`.
+Coverage must stay above `85%`.
+
+Read the terminal coverage report as follows:
+
+- `Cover`: percentage of statements and branches covered for each file.
+- `Missing`: line numbers that were not executed by tests.
+- `TOTAL`: project-wide coverage used for the `85%` threshold.
+- `Required test coverage of 85.0% reached`: coverage gate passed.
+
+Optional HTML coverage report:
+
+```bash
+python -m pytest --cov=rust_sensei --cov-report=html
+```
+
+Open `htmlcov/index.html` in a browser to inspect file-by-file coverage. The `htmlcov/` directory is ignored by git.
 
 ## Documents
 
