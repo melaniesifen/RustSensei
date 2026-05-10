@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
+from rust_sensei.domain.attempt import AttemptSubmission
 from rust_sensei.domain.curriculum import Concept, Curriculum
 from rust_sensei.domain.learner import LearnerProfile
 from rust_sensei.domain.lesson import LessonAssignment
@@ -35,6 +36,37 @@ class AssignmentRepository(Protocol):
         ...
 
     def get_active_assignment(self, learner_id: str) -> LessonAssignment | None:
+        ...
+
+    def get_attempted_assignment(self, learner_id: str) -> LessonAssignment | None:
+        ...
+
+    def update_assignment(self, assignment: LessonAssignment) -> None:
+        ...
+
+
+class AttemptRepository(Protocol):
+    def save_attempt_for_assignment(
+        self,
+        attempt: AttemptSubmission,
+        assignment: LessonAssignment,
+    ) -> tuple[AttemptSubmission, bool]:
+        ...
+
+    def get_attempt(self, attempt_id: str) -> AttemptSubmission | None:
+        ...
+
+    def get_attempt_by_client_request_id(
+        self,
+        learner_id: str,
+        client_request_id: str,
+    ) -> AttemptSubmission | None:
+        ...
+
+    def get_latest_attempt_for_assignment(
+        self,
+        assignment_id: str,
+    ) -> AttemptSubmission | None:
         ...
 
 

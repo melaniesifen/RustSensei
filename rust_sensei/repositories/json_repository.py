@@ -7,12 +7,13 @@ from pathlib import Path
 from typing import Any
 
 from rust_sensei.constants import STATE_FILE_NAME
+from rust_sensei.domain.attempt import AttemptSubmission, CommandRunMetadata
 from rust_sensei.domain.curriculum import Concept, Curriculum
 from rust_sensei.domain.enums import AssignmentStatus, RustLevel
 from rust_sensei.domain.learner import LearnerProfile
 from rust_sensei.domain.lesson import LessonAssignment
 from rust_sensei.domain.skill import SkillModel, SkillScore
-from rust_sensei.errors import storage_error
+from rust_sensei.errors import idempotency_conflict_error, storage_error
 from rust_sensei.repositories.json_state import JsonStateStore
 
 
@@ -78,12 +79,7 @@ class JsonAssignmentRepository:
 
     def save_assignment(self, assignment: LessonAssignment) -> None:
         def mutation(state: dict[str, Any]) -> None:
-            state["lesson_assignments"] = [
-                item
-                for item in state["lesson_assignments"]
-                if item["assignment_id"] != assignment.assignment_id
-            ]
-            state["lesson_assignments"].append(_assignment_to_state(assignment))
+            _replace_assignment(state, assignment)
 
         self._store.update(mutation)
 
@@ -125,6 +121,94 @@ class JsonAssignmentRepository:
         state = self._store.read()
         return _active_assignment_from_state(state, learner_id)
 
+    def get_attempted_assignment(self, learner_id: str) -> LessonAssignment | None:
+        state = self._store.read()
+        return _assignment_with_status_from_state(
+            state,
+            learner_id=learner_id,
+            status=AssignmentStatus.ATTEMPTED,
+        )
+
+    def update_assignment(self, assignment: LessonAssignment) -> None:
+        self.save_assignment(assignment)
+
+
+class JsonAttemptRepository:
+    def __init__(self, store: JsonStateStore) -> None:
+        self._store = store
+
+    def save_attempt_for_assignment(
+        self,
+        attempt: AttemptSubmission,
+        assignment: LessonAssignment,
+    ) -> tuple[AttemptSubmission, bool]:
+        def transaction(
+            state: dict[str, Any],
+        ) -> tuple[tuple[AttemptSubmission, bool], bool]:
+            if attempt.client_request_id is not None:
+                existing = _attempt_by_client_request_id_from_state(
+                    state,
+                    learner_id=attempt.learner_id,
+                    client_request_id=attempt.client_request_id,
+                )
+                if existing is not None:
+                    if (
+                        existing.client_request_fingerprint
+                        != attempt.client_request_fingerprint
+                    ):
+                        raise idempotency_conflict_error(
+                            "client_request_id was reused with different content",
+                            client_request_id=attempt.client_request_id,
+                        )
+                    return (existing, False), False
+
+            created = replace(
+                attempt,
+                attempt_id=_next_attempt_id(state),
+            )
+            state["attempts"].append(_attempt_to_state(created))
+            _replace_assignment(state, assignment)
+            return (created, True), True
+
+        return self._store.transact(transaction)
+
+    def get_attempt(self, attempt_id: str) -> AttemptSubmission | None:
+        state = self._store.read()
+        return next(
+            (
+                _attempt_from_state(item)
+                for item in reversed(state["attempts"])
+                if item["attempt_id"] == attempt_id
+            ),
+            None,
+        )
+
+    def get_attempt_by_client_request_id(
+        self,
+        learner_id: str,
+        client_request_id: str,
+    ) -> AttemptSubmission | None:
+        state = self._store.read()
+        return _attempt_by_client_request_id_from_state(
+            state,
+            learner_id=learner_id,
+            client_request_id=client_request_id,
+        )
+
+    def get_latest_attempt_for_assignment(
+        self,
+        assignment_id: str,
+    ) -> AttemptSubmission | None:
+        state = self._store.read()
+        return next(
+            (
+                _attempt_from_state(item)
+                for item in reversed(state["attempts"])
+                if item["assignment_id"] == assignment_id
+            ),
+            None,
+        )
+
 
 class JsonCurriculumRepository:
     def __init__(self, curriculum_path: Path) -> None:
@@ -158,6 +242,9 @@ class JsonRepositoryFactory:
 
     def assignment_repository(self) -> JsonAssignmentRepository:
         return JsonAssignmentRepository(self._state_store)
+
+    def attempt_repository(self) -> JsonAttemptRepository:
+        return JsonAttemptRepository(self._state_store)
 
     def curriculum_repository(self) -> JsonCurriculumRepository:
         return JsonCurriculumRepository(self._curriculum_path)
@@ -241,14 +328,148 @@ def _assignment_to_state(assignment: LessonAssignment) -> dict[str, Any]:
     }
 
 
+def _replace_assignment(state: dict[str, Any], assignment: LessonAssignment) -> None:
+    state["lesson_assignments"] = [
+        item
+        for item in state["lesson_assignments"]
+        if item["assignment_id"] != assignment.assignment_id
+    ]
+    state["lesson_assignments"].append(_assignment_to_state(assignment))
+
+
 def _next_assignment_id(state: dict[str, Any]) -> str:
     next_number = len(state["lesson_assignments"]) + 1
     return f"assign_{next_number:06d}"
 
 
+def _next_attempt_id(state: dict[str, Any]) -> str:
+    next_number = len(state["attempts"]) + 1
+    return f"attempt_{next_number:06d}"
+
+
+def _attempt_from_state(data: dict[str, Any]) -> AttemptSubmission:
+    return AttemptSubmission(
+        attempt_id=data["attempt_id"],
+        learner_id=data["learner_id"],
+        assignment_id=data["assignment_id"],
+        lesson_id=data["lesson_id"],
+        client_request_id=data.get("client_request_id"),
+        client_request_fingerprint=data.get("client_request_fingerprint"),
+        workspace_root=data.get("workspace_root"),
+        code=data.get("code"),
+        file_paths=list(data.get("file_paths", [])),
+        commands_run_by_learner=list(data.get("commands_run_by_learner", [])),
+        verification_commands_run_by_agent=list(
+            data.get("verification_commands_run_by_agent", [])
+        ),
+        compiler_output=data.get("compiler_output"),
+        runtime_output=data.get("runtime_output"),
+        test_output=data.get("test_output"),
+        command_run_metadata=[
+            _command_metadata_from_state(item)
+            for item in data.get("command_run_metadata", [])
+        ],
+        output_truncated=bool(data.get("output_truncated", False)),
+        truncation_reason=data.get("truncation_reason"),
+        omitted_files=list(data.get("omitted_files", [])),
+        learner_notes=data.get("learner_notes"),
+        agent_notes=data.get("agent_notes"),
+        learner_execution_missing=bool(data.get("learner_execution_missing", False)),
+        learner_execution_notes=data.get("learner_execution_notes"),
+        submitted_at=_parse_datetime(data["submitted_at"]),
+    )
+
+
+def _attempt_to_state(attempt: AttemptSubmission) -> dict[str, Any]:
+    if attempt.submitted_at is None:
+        raise ValueError("submitted_at is required before persisting an attempt")
+
+    return {
+        "attempt_id": attempt.attempt_id,
+        "learner_id": attempt.learner_id,
+        "assignment_id": attempt.assignment_id,
+        "lesson_id": attempt.lesson_id,
+        "client_request_id": attempt.client_request_id,
+        "client_request_fingerprint": attempt.client_request_fingerprint,
+        "workspace_root": attempt.workspace_root,
+        "code": attempt.code,
+        "file_paths": list(attempt.file_paths),
+        "commands_run_by_learner": list(attempt.commands_run_by_learner),
+        "verification_commands_run_by_agent": list(
+            attempt.verification_commands_run_by_agent
+        ),
+        "compiler_output": attempt.compiler_output,
+        "runtime_output": attempt.runtime_output,
+        "test_output": attempt.test_output,
+        "command_run_metadata": [
+            _command_metadata_to_state(item)
+            for item in attempt.command_run_metadata
+        ],
+        "output_truncated": attempt.output_truncated,
+        "truncation_reason": attempt.truncation_reason,
+        "omitted_files": list(attempt.omitted_files),
+        "learner_notes": attempt.learner_notes,
+        "agent_notes": attempt.agent_notes,
+        "learner_execution_missing": attempt.learner_execution_missing,
+        "learner_execution_notes": attempt.learner_execution_notes,
+        "submitted_at": _format_datetime(attempt.submitted_at),
+    }
+
+
+def _command_metadata_from_state(data: dict[str, Any]) -> CommandRunMetadata:
+    return CommandRunMetadata(
+        command=data["command"],
+        source=data["source"],
+        cwd=data.get("cwd"),
+        exit_code=data.get("exit_code"),
+        started_at=_parse_datetime(data["started_at"]),
+        duration_ms=data.get("duration_ms"),
+        timed_out=bool(data.get("timed_out", False)),
+        timeout_ms=data.get("timeout_ms"),
+        output_summary=data.get("output_summary"),
+        output_truncated=bool(data.get("output_truncated", False)),
+        stdout_truncated=bool(data.get("stdout_truncated", False)),
+        stderr_truncated=bool(data.get("stderr_truncated", False)),
+        purpose=data.get("purpose"),
+        risk_level=data.get("risk_level"),
+    )
+
+
+def _command_metadata_to_state(metadata: CommandRunMetadata) -> dict[str, Any]:
+    return {
+        "command": metadata.command,
+        "source": metadata.source,
+        "cwd": metadata.cwd,
+        "exit_code": metadata.exit_code,
+        "started_at": _format_datetime(metadata.started_at),
+        "duration_ms": metadata.duration_ms,
+        "timed_out": metadata.timed_out,
+        "timeout_ms": metadata.timeout_ms,
+        "output_summary": metadata.output_summary,
+        "output_truncated": metadata.output_truncated,
+        "stdout_truncated": metadata.stdout_truncated,
+        "stderr_truncated": metadata.stderr_truncated,
+        "purpose": metadata.purpose,
+        "risk_level": metadata.risk_level,
+    }
+
+
+
 def _active_assignment_from_state(
     state: dict[str, Any],
     learner_id: str,
+) -> LessonAssignment | None:
+    return _assignment_with_status_from_state(
+        state,
+        learner_id=learner_id,
+        status=AssignmentStatus.ACTIVE,
+    )
+
+
+def _assignment_with_status_from_state(
+    state: dict[str, Any],
+    learner_id: str,
+    status: AssignmentStatus,
 ) -> LessonAssignment | None:
     latest_records = []
     seen_assignment_ids = set()
@@ -264,7 +485,23 @@ def _active_assignment_from_state(
         (
             _assignment_from_state(item)
             for item in latest_records
-            if item["status"] == "active"
+            if item["status"] == status.value
+        ),
+        None,
+    )
+
+
+def _attempt_by_client_request_id_from_state(
+    state: dict[str, Any],
+    learner_id: str,
+    client_request_id: str,
+) -> AttemptSubmission | None:
+    return next(
+        (
+            _attempt_from_state(item)
+            for item in reversed(state["attempts"])
+            if item["learner_id"] == learner_id
+            and item.get("client_request_id") == client_request_id
         ),
         None,
     )

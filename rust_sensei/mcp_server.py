@@ -6,6 +6,7 @@ from typing import Any
 
 from pydantic import ValidationError as PydanticValidationError
 
+from rust_sensei.dto.attempt import SubmitAttemptRequest
 from rust_sensei.dto.lesson import GetNextLessonRequest
 from rust_sensei.dto.session import GetLearnerProfileRequest, StartSessionRequest
 from rust_sensei.dto.setup import GetSetupStatusRequest
@@ -23,6 +24,7 @@ def run(state_dir: Path | None = None) -> None:
     services = ServiceFactory(state_dir=state_dir)
     session_service = services.session_service()
     lesson_service = services.lesson_service()
+    assessment_service = services.assessment_service()
     setup_service = services.setup_service()
     mcp = FastMCP("rust-sensei")
 
@@ -49,6 +51,15 @@ def run(state_dir: Path | None = None) -> None:
         try:
             request = GetNextLessonRequest.model_validate(payload)
             return lesson_service.get_next_lesson(request).model_dump(mode="json")
+        except (RustSenseiError, PydanticValidationError) as exc:
+            log_boundary_exception(LOGGER, exc)
+            return _error_payload(exc)
+
+    @mcp.tool()
+    def submit_attempt(payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            request = SubmitAttemptRequest.model_validate(payload)
+            return assessment_service.submit_attempt(request).model_dump(mode="json")
         except (RustSenseiError, PydanticValidationError) as exc:
             log_boundary_exception(LOGGER, exc)
             return _error_payload(exc)

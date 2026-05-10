@@ -13,6 +13,7 @@ from rust_sensei.dto.mappers import lesson_assignment_to_dto, lesson_plan_to_dto
 from rust_sensei.errors import not_found_error, validation_error
 from rust_sensei.repositories.interfaces import (
     AssignmentRepository,
+    AttemptRepository,
     CurriculumRepository,
     LearnerRepository,
 )
@@ -25,11 +26,13 @@ class LessonService:
         self,
         learner_repository: LearnerRepository,
         assignment_repository: AssignmentRepository,
+        attempt_repository: AttemptRepository,
         curriculum_repository: CurriculumRepository,
         now: Callable[[], datetime],
     ) -> None:
         self._learner_repository = learner_repository
         self._assignment_repository = assignment_repository
+        self._attempt_repository = attempt_repository
         self._curriculum_repository = curriculum_repository
         self._now = now
 
@@ -55,6 +58,21 @@ class LessonService:
             return self._response_for_assignment(
                 active_assignment,
                 reused_active_assignment=True,
+            )
+
+        attempted_assignment = self._assignment_repository.get_attempted_assignment(
+            request.learner_id
+        )
+        if attempted_assignment is not None:
+            pending_attempt = self._attempt_repository.get_latest_attempt_for_assignment(
+                attempted_assignment.assignment_id
+            )
+            return GetNextLessonResponse(
+                assignment=None,
+                lesson_plan=None,
+                reused_active_assignment=False,
+                pending_assessment=True,
+                pending_attempt_id=pending_attempt.attempt_id if pending_attempt else None,
             )
 
         if profile.active_concept_id is None:
