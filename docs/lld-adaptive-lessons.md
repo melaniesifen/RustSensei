@@ -131,36 +131,56 @@ class LessonSelection:
 | `challenge` | Learner exceeds baseline | Add formatting, mutation, and a small calculation |
 | `advanced` | Learner shows strong transfer | Model typed data and explain tradeoffs |
 
-### 4.4 Selection Algorithm
+### 4.4 Selection Policy Registry
+
+Lesson selection must use a policy registry instead of a central conditional chain. This keeps next-action behavior extensible. Adding a new action should require adding 1 policy class and registering it, not editing every selection call site.
 
 ```python
-def select_next_lesson(profile, progress, recent_assessments, curriculum):
-    if profile.active_concept_id is None:
-        concept = starting_concept_for(profile.rust_level_initial)
-        return build_lesson(concept, difficulty_for_initial_level(profile))
+from typing import Protocol
 
-    last = recent_assessments[0] if recent_assessments else None
-    if last is None:
-        concept = curriculum.get(profile.active_concept_id)
-        return build_lesson(concept, concept.default_difficulty)
 
-    if last.next_action == "simplify":
-        return build_lesson(last.concept_id, lower_difficulty(last.difficulty))
+class LessonSelectionPolicy(Protocol):
+    action: str
 
-    if last.next_action == "repeat":
-        return build_variant(last.concept_id, last.difficulty)
+    def select(self, context: "LessonSelectionContext") -> LessonPlan:
+        ...
 
-    if last.next_action == "continue":
-        return build_lesson(next_concept(last.concept_id), "standard")
 
-    if last.next_action == "accelerate":
-        return build_lesson(next_unmastered_concept(profile, curriculum), "challenge")
+class SimplifyPolicy:
+    action = "simplify"
 
-    if last.next_action == "branch":
-        return build_branch_lesson(profile, last)
+    def select(self, context: "LessonSelectionContext") -> LessonPlan:
+        return context.lesson_factory.build_lesson(
+            concept_id=context.last_assessment.concept_id,
+            difficulty=context.difficulty_scale.lower(context.last_assessment.difficulty),
+        )
 
-    raise ValueError(f"Unsupported next action: {last.next_action}")
+
+class LessonSelector:
+    def __init__(self, policies: list[LessonSelectionPolicy], placement_policy):
+        self.policies = {policy.action: policy for policy in policies}
+        self.placement_policy = placement_policy
+
+    def select_next_lesson(self, context: "LessonSelectionContext") -> LessonPlan:
+        if context.is_new_session:
+            return self.placement_policy.select(context)
+
+        action = context.last_assessment.next_action
+        policy = self.policies[action]
+        return policy.select(context)
 ```
+
+Required v1 policies:
+
+| Action | Policy class | Selection behavior |
+| --- | --- | --- |
+| `simplify` | `SimplifyPolicy` | Same concept, lower difficulty |
+| `repeat` | `RepeatPolicy` | Same concept, same difficulty, new variant |
+| `continue` | `ContinuePolicy` | Next concept, standard difficulty |
+| `accelerate` | `AcceleratePolicy` | Next unmastered concept, challenge difficulty |
+| `branch` | `BranchPolicy` | Branch lesson selected from assessment evidence |
+
+The `LessonSelector` should be the only service that resolves `next_action` to behavior.
 
 ### 4.5 Starting Placement
 
@@ -172,27 +192,61 @@ def select_next_lesson(profile, progress, recent_assessments, curriculum):
 | `proficient` | `traits_generics_testing` | `challenge` |
 | `expert` | `advanced_design_review` | `advanced` |
 
-### 4.6 Next-Step Policy
+### 4.6 Next-Step Rule Set
+
+Next-step action selection must use ordered rules instead of a hardcoded conditional chain. The first matching rule wins. New action types or thresholds should be added by changing rule data or adding a rule object.
 
 ```python
-def choose_next_action(assessment):
-    rust = assessment.aggregate_scores["rust"]
-    general = assessment.aggregate_scores["general_programming"]
-    confidence = assessment.confidence
+from dataclasses import dataclass
+from typing import Callable
 
-    if confidence < 0.45:
-        return "repeat"
 
-    if rust < 0.50:
-        return "simplify"
+@dataclass(frozen=True)
+class NextStepRule:
+    rule_id: str
+    action: str
+    predicate: Callable[["AssessmentSummary"], bool]
+    reason: str
 
-    if rust >= 0.85 and general >= 0.80 and confidence >= 0.70:
-        return "accelerate"
 
-    if rust >= 0.70 and confidence >= 0.60:
-        return "continue"
+NEXT_STEP_RULES = [
+    NextStepRule(
+        rule_id="low_confidence_repeat",
+        action="repeat",
+        predicate=lambda a: a.confidence < 0.45,
+        reason="Assessment confidence is below 0.45.",
+    ),
+    NextStepRule(
+        rule_id="rust_gap_simplify",
+        action="simplify",
+        predicate=lambda a: a.rust_score < 0.50,
+        reason="Rust concept score is below 0.50.",
+    ),
+    NextStepRule(
+        rule_id="strong_performance_accelerate",
+        action="accelerate",
+        predicate=lambda a: (
+            a.rust_score >= 0.85
+            and a.general_programming_score >= 0.80
+            and a.confidence >= 0.70
+        ),
+        reason="Rust, general programming, and confidence scores meet acceleration thresholds.",
+    ),
+    NextStepRule(
+        rule_id="expected_progress_continue",
+        action="continue",
+        predicate=lambda a: a.rust_score >= 0.70 and a.confidence >= 0.60,
+        reason="Rust score and confidence meet continuation thresholds.",
+    ),
+]
 
-    return "repeat"
+
+def choose_next_action(assessment: "AssessmentSummary") -> tuple[str, str]:
+    for rule in NEXT_STEP_RULES:
+        if rule.predicate(assessment):
+            return rule.action, rule.reason
+
+    return "repeat", "No higher-priority rule matched."
 ```
 
 Thresholds are v1 defaults. They should be tuned after at least 20 assessed attempts from real usage.

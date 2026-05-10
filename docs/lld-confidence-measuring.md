@@ -187,16 +187,33 @@ Confidence controls how much a score can move after 1 assessment.
 | `0.80` to `1.00` | `0.30` |
 
 ```python
-def update_score(previous: float, observed: float, confidence: float) -> float:
-    if confidence < 0.45:
-        max_delta = 0.05
-    elif confidence < 0.60:
-        max_delta = 0.10
-    elif confidence < 0.80:
-        max_delta = 0.20
-    else:
-        max_delta = 0.30
+from dataclasses import dataclass
 
+
+@dataclass(frozen=True)
+class ConfidenceBand:
+    minimum: float
+    maximum: float
+    max_delta: float
+
+
+CONFIDENCE_BANDS = [
+    ConfidenceBand(minimum=0.00, maximum=0.44, max_delta=0.05),
+    ConfidenceBand(minimum=0.45, maximum=0.59, max_delta=0.10),
+    ConfidenceBand(minimum=0.60, maximum=0.79, max_delta=0.20),
+    ConfidenceBand(minimum=0.80, maximum=1.00, max_delta=0.30),
+]
+
+
+def max_delta_for_confidence(confidence: float) -> float:
+    for band in CONFIDENCE_BANDS:
+        if band.minimum <= confidence <= band.maximum:
+            return band.max_delta
+    raise ValueError(f"Confidence must be between 0.0 and 1.0: {confidence}")
+
+
+def update_score(previous: float, observed: float, confidence: float) -> float:
+    max_delta = max_delta_for_confidence(confidence)
     delta = observed - previous
     bounded = max(-max_delta, min(delta, max_delta))
     return round(previous + bounded, 2)
