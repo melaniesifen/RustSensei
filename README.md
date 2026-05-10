@@ -16,17 +16,33 @@ The learner writes Rust code in VS Code. Codex operates in the same workspace, c
 
 ## Current Status
 
-This repository contains design documentation and the first Python implementation slice:
+This repository contains design documentation and a local Python implementation in progress.
 
 - Package metadata and CLI entrypoint.
-- Typed DTO and domain models for session and setup flows.
-- JSON learner profile repository with atomic state writes.
-- Session service for placement and active profile retrieval.
-- Lesson assignment service for the first `get_next_lesson` flow.
-- Attempt submission service for the first `submit_attempt` flow.
+- Typed DTO and domain models for session, setup, lesson assignment, curriculum, and attempt submission flows.
+- JSON repositories for learner profiles, lesson assignments, curriculum seed data, and attempts.
+- Atomic JSON writes with file locking and state revision tracking.
+- Session service for initial placement and active profile retrieval.
+- Lesson service for the first `get_next_lesson` flow, active assignment reuse, and pending-assessment detection after an attempt.
+- Assessment service currently implements `submit_attempt` only. `assess_attempt` is not implemented yet.
 - Setup service for Python, Cargo, and state directory diagnostics.
 - Daily append-only file logging under the configured state directory.
 - Initial tests for session, lesson assignment, attempt submission, setup, and JSON state behavior.
+
+Implemented MCP tools in code:
+
+- `start_session`
+- `get_learner_profile`
+- `get_next_lesson`
+- `submit_attempt`
+- `get_setup_status`
+
+Known limitations:
+
+- The MCP boundary is not integration-tested because the `mcp` package is not available from the current local package index.
+- MCP tools currently use a `payload` wrapper pending SDK schema verification.
+- `assess_attempt`, scoring, confidence, skill updates, progress events, `get_progress_summary`, and `update_learner_signal` are not implemented.
+- v1 still supports only `local-default` as the learner id.
 
 ## Developer Setup
 
@@ -71,6 +87,30 @@ python -m pytest --cov=rust_sensei --cov-report=html
 
 Open `htmlcov/index.html` in a browser to inspect file-by-file coverage. The `htmlcov/` directory is ignored by git.
 
+Latest known verification:
+
+- `54` tests passed.
+- Coverage passed at `94.88%`.
+- Tests ran under local Python `3.9.6` with compatibility dependencies, while project metadata still targets Python `3.11+`.
+
+## Next Work
+
+Recommended implementation order:
+
+1. Implement `assess_attempt` skeleton with persisted idempotent assessment records.
+2. Implement confidence measuring from `docs/lld-confidence-measuring.md`.
+3. Implement basic deterministic rubric scoring.
+4. Update learner skill model after assessment with confidence dampening.
+5. Implement next-step decision rules and adaptive lesson handlers.
+6. Expand assignment lifecycle for assessed, abandoned, repeated, and new-variant flows.
+7. Add progress events.
+8. Add `get_progress_summary`.
+9. Add `update_learner_signal`.
+10. Add MCP resources for active profile, progress summary, and curriculum concepts.
+11. Resolve MCP SDK integration and test tool schemas/calls.
+12. Add CLI diagnostics such as `doctor`.
+13. Clean up packaging and setup docs.
+
 ## Documents
 
 - [HLD](docs/hld.md): High-level system design.
@@ -109,9 +149,10 @@ flowchart LR
 ## Future Work
 
 - Complete the Python MCP server tool surface.
+- Add `assess_attempt` and scoring.
+- Add confidence measuring and skill model updates.
+- Add progress event repositories and summary derivation.
 - Add a `doctor` command for local setup checks.
-- Add lesson assignment, attempt, assessment, and progress repositories.
-- Add adaptive curriculum seed data.
 - Add Codex setup instructions.
 - Add Claude Code setup instructions.
 - Add optional SQLite storage after the JSON proof of concept.
