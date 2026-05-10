@@ -127,11 +127,79 @@ class StartSessionRequest(BaseModel):
     initial_rust_level: RustLevel | None = None
 
 
+class LearnerProfileDTO(BaseModel):
+    learner_id: str
+    rust_level_initial: RustLevel | None
+    active_concept_id: str | None
+
+
+class LessonPlanDTO(BaseModel):
+    lesson_id: str
+    concept_id: str
+    prompt: str
+    success_criteria: list[str]
+    learner_command: str | None = None
+    hints: list[str] = Field(default_factory=list)
+    rubric_ids: list[str]
+
+
+class LessonAssignmentDTO(BaseModel):
+    assignment_id: str
+    learner_id: str
+    lesson_id: str
+    concept_id: str
+    difficulty: str
+    variant_id: str
+    status: str
+    selection_rationale: str
+    curriculum_version: str
+
+
+class CommandRunMetadataDTO(BaseModel):
+    command: str
+    exit_code: int | None
+    started_at: str
+    duration_ms: int | None = None
+    output_summary: str | None = None
+    output_truncated: bool = False
+
+
+class ConfidenceBreakdownDTO(BaseModel):
+    critical_evidence_cap: float | None = None
+    evidence_completeness: float
+    evidence_quality: float
+    rubric_confidences: dict[str, float]
+    prior_consistency: float
+    task_difficulty_weight: float
+    recency_weight: float
+    overall: float
+
+
+class FeedbackItemDTO(BaseModel):
+    category: str
+    message: str
+    evidence: list[str] = Field(default_factory=list)
+
+
+class AssessmentResultDTO(BaseModel):
+    assessment_id: str
+    attempt_id: str
+    assignment_id: str
+    assessment_status: str
+    rubric_scores: dict[str, SkillScore]
+    confidence_breakdown: ConfidenceBreakdownDTO
+    missing_evidence: list[str] = Field(default_factory=list)
+    feedback_items: list[FeedbackItemDTO] = Field(default_factory=list)
+    next_action: NextAction
+    feedback_summary: str
+    confidence: float
+
+
 class StartSessionResponse(BaseModel):
     learner_id: str
     placement_required: bool
     allowed_placements: list[RustLevel] = Field(default_factory=list)
-    profile: LearnerProfile | None = None
+    profile: LearnerProfileDTO | None = None
 
 
 class GetNextLessonRequest(BaseModel):
@@ -142,23 +210,25 @@ class GetNextLessonRequest(BaseModel):
 
 
 class GetNextLessonResponse(BaseModel):
-    assignment: LessonAssignment
-    lesson_plan: LessonPlan
+    assignment: LessonAssignmentDTO | None
+    lesson_plan: LessonPlanDTO | None
     reused_active_assignment: bool
+    pending_assessment: bool = False
+    pending_attempt_id: str | None = None
 
 
 class SubmitAttemptRequest(BaseModel):
     learner_id: str = "local-default"
     assignment_id: str
     client_request_id: str | None = None
-    code: str
+    code: str | None = None
     file_paths: list[str] = Field(default_factory=list)
     commands_run_by_learner: list[str] = Field(default_factory=list)
     verification_commands_run_by_agent: list[str] = Field(default_factory=list)
     compiler_output: str | None = None
     runtime_output: str | None = None
     test_output: str | None = None
-    command_run_metadata: list[dict] = Field(default_factory=list)
+    command_run_metadata: list[CommandRunMetadataDTO] = Field(default_factory=list)
     output_truncated: bool = False
     truncation_reason: str | None = None
     omitted_files: list[str] = Field(default_factory=list)
@@ -177,11 +247,13 @@ class AssessAttemptRequest(BaseModel):
 
 
 class AssessAttemptResponse(BaseModel):
-    assessment: AssessmentResult
+    assessment: AssessmentResultDTO
     already_assessed: bool
 ```
 
 DTO mapping rule: MCP request and response models are Pydantic DTOs. Domain models may use dataclasses internally. Services must map explicitly between API DTOs and domain models instead of returning raw dataclasses through the MCP boundary.
+
+Validation rule: `assignment_id` is required for `submit_attempt`. At least 1 assessable artifact is also required: code, compiler output, runtime output, test output, or command run metadata. Missing code by itself is not a validation error when another assessable artifact exists.
 
 ### 4.4 Data Models
 
@@ -246,20 +318,49 @@ class LessonAssignment:
 
 
 @dataclass
+class CommandRunMetadata:
+    command: str
+    exit_code: int | None
+    started_at: datetime
+    duration_ms: int | None
+    output_summary: str | None
+    output_truncated: bool
+
+
+@dataclass
+class ConfidenceBreakdown:
+    critical_evidence_cap: float | None
+    evidence_completeness: float
+    evidence_quality: float
+    rubric_confidences: dict[str, float]
+    prior_consistency: float
+    task_difficulty_weight: float
+    recency_weight: float
+    overall: float
+
+
+@dataclass
+class FeedbackItem:
+    category: str
+    message: str
+    evidence: list[str]
+
+
+@dataclass
 class AttemptSubmission:
     attempt_id: str
     learner_id: str
     assignment_id: str
     lesson_id: str
     client_request_id: str | None
-    code: str
+    code: str | None
     file_paths: list[str]
     commands_run_by_learner: list[str]
     verification_commands_run_by_agent: list[str]
     compiler_output: str | None
     runtime_output: str | None
     test_output: str | None
-    command_run_metadata: list[dict]
+    command_run_metadata: list[CommandRunMetadata]
     output_truncated: bool
     truncation_reason: str | None
     omitted_files: list[str]
@@ -277,9 +378,9 @@ class AssessmentResult:
     scoring_version: str
     assessment_status: Literal["assessed", "insufficient_evidence"]
     rubric_scores: dict[str, SkillScore]
-    confidence_breakdown: dict
+    confidence_breakdown: ConfidenceBreakdown
     missing_evidence: list[str]
-    feedback_items: list[dict]
+    feedback_items: list[FeedbackItem]
     next_action: NextAction
     feedback_summary: str
     confidence: float
@@ -391,6 +492,7 @@ JSON repository rules:
 - `start_session` with no profile and no placement returns `placement_required: true`.
 - `start_session` creates the learner profile only after a valid placement is provided.
 - `get_next_lesson` returns an active unattempted assignment if one exists.
+- `get_next_lesson` returns a pending-assessment response when an assignment is attempted but not assessed.
 - `get_next_lesson` creates a new assignment only when no active assignment exists, the prior assignment was assessed or abandoned, or `force_new_variant` is true.
 - `abandon_active_assignment` requires `abandonment_reason`.
 - If `force_new_variant` and `abandon_active_assignment` are both true, the server abandons the active assignment first, records an `abandoned` event, then creates a new assignment.

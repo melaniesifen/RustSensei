@@ -113,7 +113,7 @@ def critical_evidence_cap(attempt) -> float | None:
 | Runtime or test output submitted | 0.15 |
 | Learner notes submitted | 0.10 |
 | Structured command metadata submitted | 0.10 |
-| Lesson id submitted | 0.05 |
+| Assignment id submitted | 0.05 |
 
 ```python
 def evidence_completeness(attempt) -> float:
@@ -123,7 +123,7 @@ def evidence_completeness(attempt) -> float:
     score += 0.15 if attempt.runtime_output or attempt.test_output else 0.0
     score += 0.10 if attempt.learner_notes else 0.0
     score += 0.10 if attempt.command_run_metadata else 0.0
-    score += 0.05 if attempt.lesson_id else 0.0
+    score += 0.05 if attempt.assignment_id else 0.0
     return min(score, 1.0)
 ```
 
@@ -180,10 +180,33 @@ RUBRIC_EVIDENCE_WEIGHTS = {
         "test_output": 0.20,
         "learner_notes": 0.05,
     },
+    "rust_idioms": {
+        "code": 0.70,
+        "compiler_output": 0.10,
+        "learner_notes": 0.10,
+        "agent_notes": 0.10,
+    },
     "readability": {
         "code": 0.80,
         "learner_notes": 0.10,
         "agent_notes": 0.10,
+    },
+    "maintainability": {
+        "code": 0.75,
+        "learner_notes": 0.15,
+        "agent_notes": 0.10,
+    },
+    "problem_solving": {
+        "code": 0.35,
+        "test_output": 0.20,
+        "learner_notes": 0.30,
+        "agent_notes": 0.15,
+    },
+    "dsa": {
+        "code": 0.40,
+        "test_output": 0.20,
+        "learner_notes": 0.25,
+        "agent_notes": 0.15,
     },
     "compiler_error_handling": {
         "compiler_output": 0.45,
@@ -204,6 +227,8 @@ def rubric_confidence(attempt, rubric_id: str) -> float:
 ```
 
 Agent notes can contribute to rubrics such as readability, but they should not outweigh primary artifacts.
+
+Validation rule: every `rubric_id` assigned by a lesson must have an entry in `RUBRIC_EVIDENCE_WEIGHTS`.
 
 Rubric-specific evidence caps:
 
@@ -281,8 +306,8 @@ For v1, recency is `1.0` for the current attempt. Historical scores older than 3
 
 ```python
 WEIGHTS = {
-    "evidence_completeness": 0.35,
-    "evidence_quality": 0.25,
+    "evidence_completeness": 0.30,
+    "evidence_quality": 0.20,
     "rubric_confidence": 0.20,
     "prior_consistency": 0.10,
     "task_difficulty_weight": 0.15,
@@ -290,8 +315,32 @@ WEIGHTS = {
 }
 
 
-def overall_confidence(breakdown: ConfidenceBreakdown) -> float:
-    rubric_confidence = weighted_mean_required_rubrics(breakdown.rubric_confidences)
+def weighted_mean_required_rubrics(
+    rubric_confidences: dict[str, float],
+    required_rubric_ids: list[str],
+    rubric_weights: dict[str, float] | None = None,
+) -> float:
+    if rubric_weights is None:
+        rubric_weights = {rubric_id: 1.0 for rubric_id in required_rubric_ids}
+
+    numerator = sum(
+        rubric_confidences[rubric_id] * rubric_weights[rubric_id]
+        for rubric_id in required_rubric_ids
+    )
+    denominator = sum(rubric_weights[rubric_id] for rubric_id in required_rubric_ids)
+    return numerator / denominator
+
+
+def overall_confidence(
+    breakdown: ConfidenceBreakdown,
+    required_rubric_ids: list[str],
+    rubric_weights: dict[str, float] | None = None,
+) -> float:
+    rubric_confidence = weighted_mean_required_rubrics(
+        breakdown.rubric_confidences,
+        required_rubric_ids,
+        rubric_weights,
+    )
     value = (
         breakdown.evidence_completeness * WEIGHTS["evidence_completeness"]
         + breakdown.evidence_quality * WEIGHTS["evidence_quality"]

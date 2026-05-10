@@ -156,11 +156,11 @@ Lesson selection must use a handler registry instead of a central conditional ch
 from collections.abc import Callable
 
 
-LessonHandler = Callable[["LessonSelectionContext"], LessonPlan]
+LessonHandler = Callable[["LessonSelectionContext"], LessonSelectionDecision]
 
 
-def select_simplified_lesson(context: "LessonSelectionContext") -> LessonPlan:
-    return context.lesson_factory.build_lesson(
+def select_simplified_lesson(context: "LessonSelectionContext") -> LessonSelectionDecision:
+    return context.decision_factory.build_decision(
         concept_id=context.last_assignment.concept_id,
         difficulty=context.difficulty_scale.lower(context.last_assignment.difficulty),
     )
@@ -171,7 +171,7 @@ class LessonSelector:
         self.handlers = handlers
         self.placement_policy = placement_policy
 
-    def select_next_lesson(self, context: "LessonSelectionContext") -> LessonPlan:
+    def select_next_lesson(self, context: "LessonSelectionContext") -> LessonSelectionDecision:
         if context.is_new_session:
             return self.placement_policy.select(context)
 
@@ -300,6 +300,8 @@ Branch target semantics:
 - `branch_targets` keys are stable `branch_id` values.
 - A next-step rule returning `branch` must also return a `branch_id`.
 - `select_branch_lesson` resolves the branch by looking up `concept.branch_targets[branch_id]`.
+- If the current concept does not define the selected `branch_id`, `select_branch_lesson` uses a configured global branch fallback for that `branch_id`.
+- If no concept branch target or global fallback exists, the selector falls back to `repeat` and records an explicit rationale.
 - Branches may be remediation, enrichment, or temporary alternate paths. The branch id defines the branch purpose.
 
 ### 4.7 Mastery And Completion Rules
@@ -343,6 +345,7 @@ Required checks:
 - All prerequisite ids exist.
 - All next concept ids exist.
 - All branch target ids exist.
+- Every `branch_id` returned by a v1 next-step rule is available on relevant concepts or has a configured global fallback.
 - All rubric ids exist.
 - The default path has no unintended cycles.
 - Every non-terminal concept has at least 1 reachable next concept or branch target.

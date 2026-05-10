@@ -105,6 +105,7 @@ Planned MCP tools:
 
 - `FR-05`: `get_next_lesson` must persist a `LessonAssignment` when it creates a new instructional assignment.
 - `FR-05`: `get_next_lesson` must return the active unattempted assignment by default instead of creating duplicate assignments.
+- `FR-05`: `get_next_lesson` must return a pending-assessment response when the active assignment has an attempt but no assessment.
 - `FR-05`: A new assignment may be created after assessment changes progression, after explicit abandonment, or when the client requests a new variant through a defined parameter.
 - `FR-08`: `submit_attempt` must persist an attempt and return a server-generated `attempt_id`.
 - `FR-08`: `submit_attempt` must link each attempt to the exact `assignment_id` the learner received.
@@ -307,10 +308,10 @@ Example adaptive outcomes:
 
 ### 7.9 Agent Submits Incomplete Attempt
 
-- Trigger: Missing assignment id, code, command output, or context fields.
+- Trigger: Missing assignment id or missing all assessable artifacts.
 - Related requirements: `FR-08`, `NFR-04`.
-- Expected behavior: Rust Sensei returns a structured validation error with missing fields.
-- Assessment behavior: No learner skill update occurs.
+- Expected behavior: Rust Sensei returns a structured validation error when `assignment_id` is missing or no assessable artifact is present.
+- Assessment behavior: Missing code or missing command output may produce low confidence or `insufficient_evidence` when another assessable artifact exists. No learner skill update occurs for validation errors.
 
 ### 7.10 Storage Path Not Writable
 

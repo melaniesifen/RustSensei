@@ -128,7 +128,7 @@ Rules:
 3. Call get_next_lesson before assigning work.
 4. Ask the learner to run the lesson command themselves when provided.
 5. Do not assess final performance without submitting the attempt to Rust Sensei.
-6. When assessing, collect assignment id, code, compiler output, runtime output, test output, learner notes, and your notes when available.
+6. When assessing, collect assignment id, relevant code when available, learner-run commands, agent verification commands, command metadata, compiler output, runtime output, test output, truncation status, omitted files, learner notes, and your notes when available.
 7. Preserve Rust Sensei scores, confidence, evidence, and next-step action exactly.
 8. If you add extra advice, label it as agent guidance and do not change progression.
 9. If the learner is stuck, use update_learner_signal before changing lesson difficulty.
@@ -191,7 +191,8 @@ Payload guidance:
 | New session | Call `start_session` |
 | Rust Sensei returns `placement_required: true` | Ask exactly 1 placement question using allowed choices |
 | Learner asks what to do next | Call `get_next_lesson` |
-| Learner says they are done | Run verification, call `submit_attempt`, then call `assess_attempt` |
+| Learner says they finished editing | Ask whether they are ready for assessment before running verification |
+| Learner asks for assessment or checking | Run verification, call `submit_attempt`, then call `assess_attempt` |
 | Learner is stuck | Ask 1 focused question or call `update_learner_signal` |
 | Code does not compile | Submit compiler output as evidence |
 | Rust Sensei returns low confidence | Ask for the missing signal requested by Rust Sensei |
