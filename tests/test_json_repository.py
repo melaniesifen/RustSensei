@@ -3,6 +3,8 @@ import json
 import pytest
 
 from rust_sensei.domain.enums import RustLevel
+from rust_sensei.domain.learner import LearnerProfile
+from rust_sensei.domain.skill import SkillModel
 from rust_sensei.dto.session import StartSessionRequest
 from rust_sensei.errors import StorageError
 from rust_sensei.repositories.json_state import JsonStateStore
@@ -49,7 +51,33 @@ def test_json_state_rejects_unsupported_schema_version(tmp_path):
         JsonStateStore(state_path).read()
 
 
+def test_create_profile_if_absent_keeps_original_profile(tmp_path):
+    repository = JsonRepositoryFactory(tmp_path).learner_repository()
+    first = _profile(RustLevel.NEW)
+    second = _profile(RustLevel.EXPERT)
+
+    created = repository.create_profile_if_absent(first)
+    existing = repository.create_profile_if_absent(second)
+
+    state = json.loads((tmp_path / "state.json").read_text(encoding="utf-8"))
+    assert created.rust_level_initial == RustLevel.NEW
+    assert existing.rust_level_initial == RustLevel.NEW
+    assert state["learners"]["local-default"]["rust_level_initial"] == "new"
+    assert state["state_revision"] == 2
+
+
 def _fixed_now():
     from datetime import datetime, timezone
 
     return datetime(2026, 5, 10, tzinfo=timezone.utc)
+
+
+def _profile(level):
+    return LearnerProfile(
+        learner_id="local-default",
+        rust_level_initial=level,
+        active_concept_id=None,
+        skill_model=SkillModel(),
+        created_at=_fixed_now(),
+        updated_at=_fixed_now(),
+    )

@@ -30,6 +30,17 @@ class JsonLearnerRepository:
 
         self._store.update(mutation)
 
+    def create_profile_if_absent(self, profile: LearnerProfile) -> LearnerProfile:
+        def transaction(state: dict[str, Any]) -> tuple[LearnerProfile, bool]:
+            existing = self._profile_from_state(state["learners"].get(profile.learner_id))
+            if existing is not None:
+                return existing, False
+
+            state["learners"][profile.learner_id] = self._profile_to_state(profile)
+            return profile, True
+
+        return self._store.transact(transaction)
+
     @staticmethod
     def _profile_from_state(data: dict[str, Any] | None) -> LearnerProfile | None:
         if data is None:

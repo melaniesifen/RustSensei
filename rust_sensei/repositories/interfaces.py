@@ -14,3 +14,6 @@ class LearnerRepository(Protocol):
 
     def save_profile(self, profile: LearnerProfile) -> None:
         ...
+
+    def create_profile_if_absent(self, profile: LearnerProfile) -> LearnerProfile:
+        ...

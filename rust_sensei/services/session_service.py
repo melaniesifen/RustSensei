@@ -51,10 +51,11 @@ class SessionService:
                 profile=None,
             )
 
-        created = self._create_profile(request)
-        self._learner_repository.save_profile(created)
+        created = self._learner_repository.create_profile_if_absent(
+            self._create_profile(request)
+        )
         LOGGER.info(
-            "Created learner profile learner_id=%s rust_level_initial=%s",
+            "Started learner session learner_id=%s rust_level_initial=%s",
             created.learner_id,
             created.rust_level_initial.value,
         )

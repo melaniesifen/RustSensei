@@ -6,13 +6,14 @@ import tempfile
 from collections.abc import Callable
 from contextlib import contextmanager
 from pathlib import Path
-from typing import Any
+from typing import Any, TypeVar
 
 import fcntl
 
 from rust_sensei.constants import ACTIVE_LEARNER_ID, SCHEMA_VERSION, STATE_LOCK_FILE_NAME
 from rust_sensei.errors import storage_error
 
+T = TypeVar("T")
 StateMutation = Callable[[dict[str, Any]], None]
 
 
@@ -30,12 +31,20 @@ class JsonStateStore:
             return self._load_state()
 
     def update(self, mutation: StateMutation) -> dict[str, Any]:
+        def transaction(state: dict[str, Any]) -> tuple[dict[str, Any], bool]:
+            mutation(state)
+            return state, True
+
+        return self.transact(transaction)
+
+    def transact(self, transaction: Callable[[dict[str, Any]], tuple[T, bool]]) -> T:
         with self._locked():
             state = self._load_state()
-            mutation(state)
-            state["state_revision"] += 1
-            self._write_state(state)
-            return state
+            result, changed = transaction(state)
+            if changed:
+                state["state_revision"] += 1
+                self._write_state(state)
+            return result
 
     @contextmanager
     def _locked(self):
