@@ -82,6 +82,20 @@ Planned MCP tools:
 - `update_learner_signal`: Record non-code signals such as confusion, confidence, or self-reported blockers.
 - `get_setup_status`: Return setup checks and missing prerequisites.
 
+Planned MCP resources:
+
+- `rust-sensei://profile/active`: Read-only active learner profile.
+- `rust-sensei://progress/summary`: Read-only progress summary derived from canonical events.
+- `rust-sensei://curriculum/concepts`: Read-only curriculum concept inventory.
+
+Planned MCP prompts:
+
+- `rust_sensei_tutor`: General tutor behavior and coaching rules.
+- `rust_sensei_attempt_review`: Attempt-review behavior using Rust Sensei assessment output.
+- `rust_sensei_stuck_coaching`: Coaching behavior when the learner is blocked or confused.
+
+Tools, resources, and prompts are v1 requirements. Richer variants can be added after the MCP server skeleton works.
+
 ### 2.7 Local State And Setup
 
 - `FR-09`: v1 must store learner state in local JSON.
@@ -89,8 +103,10 @@ Planned MCP tools:
 - `FR-10`: JSON read-modify-write operations must use a single-writer lock and a state revision value to prevent lost updates.
 - `FR-10`: Progress summaries must be derived from canonical records where possible.
 - `FR-10`: Rust Sensei must persist lesson assignments, attempts, assessments, learner signals, and progress events for auditability.
-- `FR-13`: The project must include a setup and diagnostics path.
-- `FR-13`: A future `doctor` command must check Python, Rust, Cargo, writable state path, lesson catalog availability, and MCP server startup.
+- `FR-11`: v1 supports only `local-default` unless explicitly configured.
+- `FR-11`: v1 must return a validation or not-found error for unsupported learner ids.
+- `FR-13`: `get_setup_status` is the v1 setup diagnostics path.
+- `FR-13`: A future `doctor` command may wrap or extend `get_setup_status` as a CLI diagnostic command.
 
 ### 2.8 Session And Placement Protocol
 
@@ -110,6 +126,12 @@ Planned MCP tools:
 - `FR-08`: `submit_attempt` must persist an attempt and return a server-generated `attempt_id`.
 - `FR-08`: `submit_attempt` must link each attempt to the exact `assignment_id` the learner received.
 - `FR-04`: `assess_attempt` must be idempotent. Retrying it for an already assessed attempt returns the existing assessment and must not update skill scores twice.
+
+Assessment status boundaries:
+
+- Validation error: missing `assignment_id` or no assessable artifact. No attempt, assessment, or skill update is created.
+- `insufficient_evidence`: attempt is accepted, but evidence is below the assessment threshold. The assessment is persisted and skill updates are skipped.
+- Assessed with low confidence: scores are produced and skill updates are dampened.
 
 ## 3. Non-Functional Requirements
 
@@ -252,14 +274,14 @@ Example adaptive outcomes:
 
 ### 7.1 Rust Toolchain Missing
 
-- Trigger: Codex or `doctor` cannot find `rustc`.
+- Trigger: `get_setup_status`, Codex, or future `doctor` cannot find `rustc`.
 - Related requirements: `FR-07`, `FR-13`.
 - Expected behavior: Rust Sensei reports setup incomplete and recommends installing Rust through `rustup`.
 - Assessment behavior: Do not score Rust skill from failed setup alone.
 
 ### 7.2 Cargo Missing
 
-- Trigger: Codex or `doctor` cannot find `cargo`.
+- Trigger: `get_setup_status`, Codex, or future `doctor` cannot find `cargo`.
 - Related requirements: `FR-07`, `FR-13`.
 - Expected behavior: Rust Sensei reports setup incomplete and blocks lessons that require Cargo commands.
 - Assessment behavior: Record workflow blocker, not coding failure.
@@ -347,3 +369,21 @@ Example adaptive outcomes:
 - Optional code runner: v1 does not execute learner code inside Rust Sensei. A later version may add a sandboxed runner behind a separate interface.
 - Richer editor integration: VS Code is the target editor for v1. Later versions may add editor-specific helpers for debugger practice, rust-analyzer diagnostics, or current-file submission.
 - Hosted mode: Later versions may support remote accounts, synced progress, and team or classroom usage. This is outside v1.
+
+### A.2 Requirement Traceability
+
+| Requirement | Owning section | Primary LLD |
+| --- | --- | --- |
+| `FR-01` | Learner placement and session protocol | MCP server, AI agent |
+| `FR-02` | Skill updates from demonstrated work | Confidence measuring, adaptive lessons |
+| `FR-03` | Separate Rust and programming skill | MCP server, confidence measuring |
+| `FR-04` | Assessment and scoring | MCP server, confidence measuring |
+| `FR-05` | Adaptive progression | Adaptive lessons |
+| `FR-06` | General Rust fluency path | Adaptive lessons |
+| `FR-07` | Learner-owned execution | AI agent |
+| `FR-08` | Attempt submission | MCP server, AI agent |
+| `FR-09` | Local JSON state | MCP server |
+| `FR-10` | Persistence abstraction and audit history | MCP server |
+| `FR-11` | Single learner v1, multi-learner-ready schema | MCP server |
+| `FR-12` | Agent-neutral MCP interface | MCP server, AI agent |
+| `FR-13` | Setup diagnostics | MCP server |

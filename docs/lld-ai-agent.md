@@ -100,6 +100,7 @@ Rules:
 - Do not run destructive commands.
 - Do not run commands unrelated to the Rust project.
 - If a lesson needs another command, Rust Sensei must return it explicitly in the lesson plan.
+- Lesson-provided commands are eligible for agent verification only when the command is allowlisted or the lesson marks it `allowed_for_agent_verification: true`.
 - Non-allowlisted lesson commands require clear lesson metadata, including `purpose` and `risk_level`.
 - Non-allowlisted lesson commands require learner confirmation before execution.
 - Destructive commands remain disallowed for v1 even if a lesson includes them.
@@ -115,7 +116,7 @@ codex mcp add rust-sensei -- rust-sensei mcp
 codex mcp list
 ```
 
-If the app-bundled Codex binary is not on `PATH`, use the full binary path or fix the shell profile before running the setup.
+This command shape matches the installed Codex CLI help: `codex mcp add <NAME> -- <COMMAND>...`. If the app-bundled Codex binary is not on `PATH`, use the full binary path or fix the shell profile before running the setup.
 
 ### 4.5 Agent System Prompt Snippet
 
@@ -150,11 +151,19 @@ attempt_payload = {
     "command_run_metadata": [
         {
             "command": "cargo check",
+            "source": "agent",
+            "cwd": ".",
             "exit_code": 0,
             "started_at": "2026-05-10T18:00:00Z",
             "duration_ms": 842,
+            "timed_out": False,
+            "timeout_ms": 30000,
             "output_summary": "cargo check completed successfully",
-            "output_truncated": False
+            "output_truncated": False,
+            "stdout_truncated": False,
+            "stderr_truncated": False,
+            "purpose": "verify compilation",
+            "risk_level": "low"
         }
     ],
     "compiler_output": "...",
@@ -172,9 +181,16 @@ Payload guidance:
 
 - Prefer relevant files over entire workspaces.
 - Prefer paths relative to the workspace root.
+- Treat `workspace_root` as optional diagnostic context. Prefer a redacted label or stable hash if exported logs may leave the machine.
 - Do not submit secrets, environment files, credentials, or unrelated source files.
 - Truncate large command output with an explicit truncation marker.
 - Agent notes are diagnostic context. They are not canonical assessment results.
+
+Learner execution behavior:
+
+- If the lesson includes a learner command and the learner has not run it, remind them to run it first.
+- If the learner still requests assessment, run allowed verification commands and set `learner_execution_missing: true`.
+- Submit the learner's explanation in `learner_execution_notes` when available.
 
 ### 4.7 Feedback Rephrasing Rules
 

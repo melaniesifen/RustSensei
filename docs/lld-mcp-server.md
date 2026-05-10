@@ -107,12 +107,35 @@ rust_sensei/
 | `update_learner_signal` | Yes | Record a non-code learner signal |
 | `get_setup_status` | No | Return local setup status |
 
-### 4.3 Tool Contracts
+### 4.3 MCP Resources And Prompts
+
+Resources:
+
+| URI | Dynamic | Purpose |
+| --- | --- | --- |
+| `rust-sensei://profile/active` | Yes | Active learner profile for `local-default` |
+| `rust-sensei://progress/summary` | Yes | Derived progress summary and recent events |
+| `rust-sensei://curriculum/concepts` | No | Curriculum concept inventory |
+
+Prompts:
+
+| Prompt | Purpose |
+| --- | --- |
+| `rust_sensei_tutor` | General tutor behavior and coaching boundaries |
+| `rust_sensei_attempt_review` | Review an attempt using Rust Sensei assessment output |
+| `rust_sensei_stuck_coaching` | Coach a learner who is blocked or confused |
+
+### 4.4 Tool Contracts
 
 Tool inputs and outputs should be implemented as Pydantic models. The server should not expose loose `dict` payloads except at the MCP SDK boundary.
 
 ```python
+from typing import Literal
+
 from pydantic import BaseModel, Field
+
+RustLevel = Literal["new", "beginner", "intermediate", "proficient", "expert"]
+NextAction = Literal["simplify", "repeat", "continue", "accelerate", "branch"]
 
 
 class ErrorEnvelope(BaseModel):
@@ -120,6 +143,14 @@ class ErrorEnvelope(BaseModel):
     message: str
     details: dict = Field(default_factory=dict)
     retryable: bool = False
+
+
+class LessonCommandDTO(BaseModel):
+    command: str
+    purpose: str
+    risk_level: Literal["low", "medium", "high"]
+    required: bool = True
+    allowed_for_agent_verification: bool = False
 
 
 class StartSessionRequest(BaseModel):
@@ -146,6 +177,7 @@ class LessonPlanDTO(BaseModel):
     prompt: str
     success_criteria: list[str]
     learner_command: str | None = None
+    lesson_commands: list[LessonCommandDTO] = Field(default_factory=list)
     hints: list[str] = Field(default_factory=list)
     rubric_ids: list[str]
 
@@ -157,18 +189,26 @@ class LessonAssignmentDTO(BaseModel):
     concept_id: str
     difficulty: str
     variant_id: str
-    status: str
+    status: Literal["active", "attempted", "assessed", "abandoned"]
     selection_rationale: str
     curriculum_version: str
 
 
 class CommandRunMetadataDTO(BaseModel):
     command: str
+    source: Literal["learner", "agent"]
+    cwd: str | None = None
     exit_code: int | None
     started_at: str
     duration_ms: int | None = None
+    timed_out: bool = False
+    timeout_ms: int | None = None
     output_summary: str | None = None
     output_truncated: bool = False
+    stdout_truncated: bool = False
+    stderr_truncated: bool = False
+    purpose: str | None = None
+    risk_level: Literal["low", "medium", "high"] | None = None
 
 
 class ConfidenceBreakdownDTO(BaseModel):
@@ -193,7 +233,7 @@ class AssessmentResultDTO(BaseModel):
     attempt_id: str
     assignment_id: str
     scoring_version: str
-    assessment_status: str
+    assessment_status: Literal["assessed", "insufficient_evidence"]
     rubric_scores: dict[str, SkillScoreDTO]
     confidence_breakdown: ConfidenceBreakdownDTO
     missing_evidence: list[str] = Field(default_factory=list)
@@ -231,6 +271,7 @@ class SubmitAttemptRequest(BaseModel):
     learner_id: str = "local-default"
     assignment_id: str
     client_request_id: str | None = None
+    client_request_fingerprint: str | None = None
     workspace_root: str | None = None
     code: str | None = None
     file_paths: list[str] = Field(default_factory=list)
@@ -325,14 +366,70 @@ class GetSetupStatusResponse(BaseModel):
 
 DTO mapping rule: MCP request and response models are Pydantic DTOs. Domain models may use dataclasses internally. Services must map explicitly between API DTOs and domain models instead of returning raw dataclasses through the MCP boundary.
 
-Validation rule: `assignment_id` is required for `submit_attempt`. At least 1 assessable artifact is also required: code, compiler output, runtime output, test output, or command run metadata. Missing code by itself is not a validation error when another assessable artifact exists.
+Validation rule: `assignment_id` is required for `submit_attempt`. At least 1 assessable artifact is also required: code, compiler output, runtime output, test output, or complete command run metadata. Missing code by itself is not a validation error when another assessable artifact exists.
 
-### 4.4 Data Models
+Error strategy: v1 raises MCP tool errors with `ErrorEnvelope` in structured details. Validation and not-found errors are not retryable. Storage conflicts and transient filesystem failures are retryable. Unsupported schema version and invalid JSON state are not retryable until recovery occurs.
+
+Example validation error:
+
+```json
+{
+  "error_code": "validation_error",
+  "message": "assignment_id is required",
+  "details": {"field": "assignment_id"},
+  "retryable": false
+}
+```
+
+Example idempotency conflict:
+
+```json
+{
+  "error_code": "idempotency_conflict",
+  "message": "client_request_id was reused with different content",
+  "details": {"client_request_id": "req-123"},
+  "retryable": false
+}
+```
+
+Example not-found error:
+
+```json
+{
+  "error_code": "not_found",
+  "message": "assignment_id was not found",
+  "details": {"assignment_id": "assign_missing"},
+  "retryable": false
+}
+```
+
+Example storage conflict:
+
+```json
+{
+  "error_code": "storage_conflict",
+  "message": "state revision changed during update",
+  "details": {"expected_revision": 10, "actual_revision": 11},
+  "retryable": true
+}
+```
+
+Example unsupported schema version:
+
+```json
+{
+  "error_code": "unsupported_schema_version",
+  "message": "state schema version is newer than this server supports",
+  "details": {"schema_version": 2, "supported_schema_version": 1},
+  "retryable": false
+}
+```
+
+### 4.5 Data Models
 
 ```python
 from dataclasses import dataclass, field
 from datetime import datetime
-from enum import Enum
 from typing import Literal
 
 RustLevel = Literal["new", "beginner", "intermediate", "proficient", "expert"]
@@ -363,12 +460,22 @@ class LearnerProfile:
 
 
 @dataclass
+class LessonCommand:
+    command: str
+    purpose: str
+    risk_level: Literal["low", "medium", "high"]
+    required: bool
+    allowed_for_agent_verification: bool
+
+
+@dataclass
 class LessonPlan:
     lesson_id: str
     concept_id: str
     prompt: str
     success_criteria: list[str]
     learner_command: str | None
+    lesson_commands: list[LessonCommand]
     hints: list[str]
     rubric_ids: list[str]
 
@@ -392,11 +499,19 @@ class LessonAssignment:
 @dataclass
 class CommandRunMetadata:
     command: str
+    source: Literal["learner", "agent"]
+    cwd: str | None
     exit_code: int | None
     started_at: datetime
     duration_ms: int | None
+    timed_out: bool
+    timeout_ms: int | None
     output_summary: str | None
     output_truncated: bool
+    stdout_truncated: bool
+    stderr_truncated: bool
+    purpose: str | None
+    risk_level: Literal["low", "medium", "high"] | None
 
 
 @dataclass
@@ -425,6 +540,7 @@ class AttemptSubmission:
     assignment_id: str
     lesson_id: str
     client_request_id: str | None
+    client_request_fingerprint: str | None
     workspace_root: str | None
     code: str | None
     file_paths: list[str]
@@ -477,6 +593,8 @@ class ProgressEvent:
         "simplified",
         "accelerated",
         "branched",
+        "provisionally_skipped",
+        "skip_confirmed",
         "reopened",
         "abandoned",
     ]
@@ -499,7 +617,7 @@ class LearnerSignal:
     created_at: datetime
 ```
 
-### 4.5 Repository Interfaces
+### 4.6 Repository Interfaces
 
 ```python
 from typing import Protocol
@@ -547,7 +665,7 @@ class CurriculumRepository(Protocol):
     def list_concepts(self) -> list[ConceptSpec]: ...
 ```
 
-### 4.6 JSON State Shape
+### 4.7 JSON State Shape
 
 ```json
 {
@@ -583,10 +701,12 @@ JSON repository rules:
 - Write to a temporary file, flush it, and atomically replace the prior state file.
 - Return a conflict error if a mutation expects a revision that no longer matches.
 
-### 4.7 Session, Assignment, And Assessment Semantics
+### 4.8 Session, Assignment, And Assessment Semantics
 
 - `start_session` with no profile and no placement returns `placement_required: true`.
 - `start_session` creates the learner profile only after a valid placement is provided.
+- v1 accepts only the active learner id, default `local-default`.
+- Requests for unsupported learner ids return validation or not-found errors.
 - `get_next_lesson` returns an active unattempted assignment if one exists.
 - `get_next_lesson` returns a pending-assessment response when an assignment is attempted but not assessed.
 - `get_next_lesson` creates a new assignment only when no active assignment exists, the prior assignment was assessed or abandoned, or `force_new_variant` is true.
@@ -596,11 +716,15 @@ JSON repository rules:
 - Returning an existing assignment records `assignment_viewed`, not `assignment_created`.
 - Creating a new assignment records `assignment_created`.
 - `submit_attempt` does not accept `attempt_id`; the server generates it.
-- `submit_attempt` may accept `client_request_id` for retry-safe submission.
+- `submit_attempt` may accept `client_request_id` and `client_request_fingerprint` for retry-safe submission.
+- If the same learner and `client_request_id` arrive with identical fingerprint, return the existing attempt.
+- If the same learner and `client_request_id` arrive with different fingerprint, return an idempotency conflict and do not create another attempt.
 - `assess_attempt` returns an existing assessment when the attempt was already assessed.
 - Canonical assessment is produced by Rust Sensei scoring logic. Agent notes are persisted as evidence or diagnostic context.
 
-### 4.8 FastMCP Server Skeleton
+Command metadata rule: command metadata counts as a primary artifact only when it is complete: command, source, exit code, timestamp, truncation status, and either output summary or linked compiler, runtime, or test output.
+
+### 4.9 FastMCP Server Skeleton
 
 ```python
 from mcp.server.fastmcp import FastMCP
@@ -608,12 +732,14 @@ from mcp.server.fastmcp import FastMCP
 from rust_sensei.services.session_service import SessionService
 from rust_sensei.services.lesson_service import LessonService
 from rust_sensei.services.assessment_service import AssessmentService
+from rust_sensei.services.setup_service import SetupService
 
 mcp = FastMCP("rust-sensei")
 
 session_service = SessionService(...)
 lesson_service = LessonService(...)
 assessment_service = AssessmentService(...)
+setup_service = SetupService(...)
 
 
 @mcp.tool()
@@ -642,6 +768,67 @@ def assess_attempt(payload: dict) -> dict:
     """Assess an attempt and update learner state."""
     request = AssessAttemptRequest.model_validate(payload)
     return assessment_service.assess_attempt(request).model_dump()
+
+
+@mcp.tool()
+def get_learner_profile(payload: dict) -> dict:
+    """Return the active learner profile and skill model."""
+    request = GetLearnerProfileRequest.model_validate(payload)
+    return session_service.get_learner_profile(request).model_dump()
+
+
+@mcp.tool()
+def get_progress_summary(payload: dict) -> dict:
+    """Return the learner's progress summary."""
+    request = GetProgressSummaryRequest.model_validate(payload)
+    return lesson_service.get_progress_summary(request).model_dump()
+
+
+@mcp.tool()
+def update_learner_signal(payload: dict) -> dict:
+    """Record a non-code learner signal."""
+    request = UpdateLearnerSignalRequest.model_validate(payload)
+    return session_service.update_learner_signal(request).model_dump()
+
+
+@mcp.tool()
+def get_setup_status(payload: dict) -> dict:
+    """Return local setup diagnostics."""
+    request = GetSetupStatusRequest.model_validate(payload)
+    return setup_service.get_setup_status(request).model_dump()
+
+
+@mcp.resource("rust-sensei://profile/active")
+def active_profile() -> dict:
+    """Return the active learner profile."""
+    return session_service.get_active_profile().model_dump()
+
+
+@mcp.resource("rust-sensei://progress/summary")
+def progress_summary() -> dict:
+    """Return derived learner progress."""
+    return lesson_service.get_progress_summary().model_dump()
+
+
+@mcp.resource("rust-sensei://curriculum/concepts")
+def curriculum_concepts() -> dict:
+    """Return the curriculum concept inventory."""
+    return lesson_service.list_curriculum_concepts().model_dump()
+
+
+@mcp.prompt()
+def rust_sensei_tutor() -> str:
+    return "Use Rust Sensei state and assessments as the source of truth."
+
+
+@mcp.prompt()
+def rust_sensei_attempt_review() -> str:
+    return "Review attempts using persisted Rust Sensei assessment output."
+
+
+@mcp.prompt()
+def rust_sensei_stuck_coaching() -> str:
+    return "Coach the learner through blockers without changing progression unless Rust Sensei records a signal."
 
 
 if __name__ == "__main__":

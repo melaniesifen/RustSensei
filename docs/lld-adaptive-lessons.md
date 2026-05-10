@@ -59,6 +59,16 @@ Difficulty = Literal["intro", "guided", "standard", "challenge", "advanced"]
 
 
 @dataclass
+class LessonVariantSpec:
+    variant_id: str
+    difficulty: Difficulty
+    prompt_template: str
+    success_criteria: list[str]
+    hints: list[str]
+    lesson_commands: list[dict]
+
+
+@dataclass
 class ConceptSpec:
     concept_id: str
     title: str
@@ -74,6 +84,7 @@ class ConceptSpec:
     next_concepts: list[str]
     branch_targets: dict[str, list[str]]
     completion_thresholds: dict[str, float]
+    variants: list[LessonVariantSpec]
 
 
 @dataclass
@@ -134,7 +145,31 @@ class LessonSelectionDecision:
     "rust_correctness": 0.70,
     "rust_idioms": 0.60,
     "readability": 0.60
-  }
+  },
+  "variants": [
+    {
+      "variant_id": "variables_primitive_types_guided_001",
+      "difficulty": "guided",
+      "prompt_template": "Create and print 3 variables with different primitive types.",
+      "success_criteria": [
+        "Program compiles with cargo run",
+        "At least 3 primitive values are declared and printed"
+      ],
+      "hints": [
+        "Start with immutable let bindings",
+        "Use println! for each value"
+      ],
+      "lesson_commands": [
+        {
+          "command": "cargo run",
+          "purpose": "Run the learner's program",
+          "risk_level": "low",
+          "required": true,
+          "allowed_for_agent_verification": true
+        }
+      ]
+    }
+  ]
 }
 ```
 
@@ -185,7 +220,7 @@ Required v1 handlers:
 | --- | --- | --- |
 | `simplify` | `select_simplified_lesson` | Same concept, lower difficulty |
 | `repeat` | `select_repeat_variant` | Same concept, same difficulty, new variant |
-| `continue` | `select_next_concept` | Next concept, standard difficulty |
+| `continue` | `select_next_concept` | Next concept, default difficulty adjusted by recent score and confidence |
 | `accelerate` | `select_accelerated_concept` | Next unmastered concept, challenge difficulty |
 | `branch` | `select_branch_lesson` | Branch target selected from assessment evidence |
 
@@ -207,6 +242,8 @@ Placement skip behavior:
 
 - Concepts before the starting concept are marked `provisionally_skipped`.
 - Provisionally skipped concepts are not treated as completed.
+- Each provisional skip creates a `provisionally_skipped` progress event.
+- Confirming a skip creates a `skip_confirmed` progress event.
 - Later assessment evidence may confirm the skip or reopen the concept.
 - Reopening a skipped concept creates a `reopened` progress event.
 
@@ -232,21 +269,15 @@ class NextStepRule:
 
 NEXT_STEP_RULES = [
     NextStepRule(
-        rule_id="low_confidence_repeat",
-        action="repeat",
-        branch_id=None,
-        predicate=lambda a: a.confidence < 0.45,
-        reason="Assessment confidence is below 0.45.",
-    ),
-    NextStepRule(
         rule_id="compiler_feedback_branch",
         action="branch",
         branch_id="compiler_feedback_remediation",
         predicate=lambda a: (
             a.compiler_error_handling_score < 0.50
             and a.recent_compile_failures >= 2
+            and a.confidence >= 0.80
         ),
-        reason="Repeated compiler-error struggles require targeted remediation.",
+        reason="Repeated compiler-error struggles have high-confidence evidence for targeted remediation.",
     ),
     NextStepRule(
         rule_id="problem_solving_branch",
@@ -255,9 +286,16 @@ NEXT_STEP_RULES = [
         predicate=lambda a: (
             a.rust_score >= 0.70
             and a.problem_solving_score < 0.55
-            and a.confidence >= 0.60
+            and a.confidence >= 0.80
         ),
-        reason="Rust syntax is progressing faster than problem-solving skill.",
+        reason="Rust syntax is progressing faster than problem-solving skill with high-confidence evidence.",
+    ),
+    NextStepRule(
+        rule_id="low_confidence_repeat",
+        action="repeat",
+        branch_id=None,
+        predicate=lambda a: a.confidence < 0.45,
+        reason="Assessment confidence is below 0.45.",
     ),
     NextStepRule(
         rule_id="rust_gap_simplify",
@@ -273,7 +311,7 @@ NEXT_STEP_RULES = [
         predicate=lambda a: (
             a.rust_score >= 0.85
             and a.general_programming_score >= 0.80
-            and a.confidence >= 0.70
+            and a.confidence >= 0.80
         ),
         reason="Rust, general programming, and confidence scores meet acceleration thresholds.",
     ),
@@ -301,6 +339,7 @@ Branch target semantics:
 
 - `branch_targets` keys are stable `branch_id` values.
 - A next-step rule returning `branch` must also return a `branch_id`.
+- Branch rules must satisfy the confidence gating policy before returning `branch`; lower-confidence remediation should use `repeat` or `simplify`.
 - The assessment result must persist the selected `branch_id` and next-action reason.
 - `select_branch_lesson` resolves the branch by looking up `concept.branch_targets[branch_id]`.
 - If the current concept does not define the selected `branch_id`, `select_branch_lesson` uses a configured global branch fallback for that `branch_id`.
@@ -338,6 +377,8 @@ Variant exhaustion behavior:
 - If all variants were used recently and the learner is struggling, lower difficulty before reusing a variant.
 - If reuse is unavoidable, allow reuse only with an explicit selection rationale.
 
+Variants are stored on `ConceptSpec.variants` in v1. A future implementation may move them to a separate lesson spec repository keyed by concept id and difficulty.
+
 ### 4.9 Curriculum Validation
 
 Curriculum validation runs at server startup.
@@ -353,6 +394,8 @@ Required checks:
 - The default path has no unintended cycles.
 - Every non-terminal concept has at least 1 reachable next concept or branch target.
 - Lesson ids and variant ids are stable within a curriculum version.
+- Every variant id is unique within a concept and stable within a curriculum version.
+- Every variant references valid command metadata for non-allowlisted commands.
 
 ## 5. LLD Diagram
 
@@ -392,31 +435,37 @@ Diagram description:
 
 ## 7. Failure Scenarios
 
-### 7.1 No Eligible Concept
+### 7.1 Core Path Complete
 
-- Trigger: All concepts are complete or prerequisites are inconsistent.
-- Expected behavior: Return a project-style review task and report curriculum inconsistency.
+- Trigger: All core concepts are complete.
+- Expected behavior: Return a capstone, project, or review assignment.
+- Requirement link: `AL-FR-07`.
+
+### 7.2 Curriculum Graph Invalid
+
+- Trigger: No eligible concept exists because prerequisites or graph links are inconsistent.
+- Expected behavior: Return a curriculum validation error.
 - Requirement link: `AL-FR-02`.
 
-### 7.2 Repeated Prompt Loop
+### 7.3 Repeated Prompt Loop
 
 - Trigger: Same lesson text would be returned more than 2 times in a row.
 - Expected behavior: Return a new variant or ask for missing evidence.
 - Requirement link: `AL-NFR-05`.
 
-### 7.3 Initial Placement Is Wrong
+### 7.4 Initial Placement Is Wrong
 
 - Trigger: Learner-selected level conflicts with demonstrated work.
 - Expected behavior: Update confidence and adjust difficulty.
 - Requirement link: `FR-02`.
 
-### 7.4 Assessment Confidence Too Low
+### 7.5 Assessment Confidence Too Low
 
 - Trigger: Missing code, output, notes, or evidence.
 - Expected behavior: Repeat or request more evidence before changing placement.
 - Requirement link: `FR-04`.
 
-### 7.5 Concept Spec Invalid
+### 7.6 Concept Spec Invalid
 
 - Trigger: Missing prerequisites, rubric ids, or next concept references.
 - Expected behavior: Fail startup validation and report invalid concept ids.

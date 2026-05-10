@@ -79,11 +79,28 @@ Concrete primary artifacts:
 - Compiler output
 - Runtime output
 - Test output
-- Persisted command-run metadata containing command, exit code, timestamp, output summary, and truncation status
+- Persisted command-run metadata containing command, source, exit code, timestamp, truncation status, and either output summary or linked compiler, runtime, or test output
 
 Agent notes do not satisfy critical evidence gates by themselves. Agent notes may explain missing evidence or raise confidence slightly inside a rubric-specific calculation.
 
 ```python
+def has_primary_command_metadata(attempt) -> bool:
+    if not attempt.command_run_metadata:
+        return False
+
+    has_linked_output = bool(
+        attempt.compiler_output or attempt.runtime_output or attempt.test_output
+    )
+    return any(
+        item.command
+        and item.source
+        and item.exit_code is not None
+        and item.started_at
+        and (item.output_summary or has_linked_output)
+        for item in attempt.command_run_metadata
+    )
+
+
 def critical_evidence_cap(attempt) -> float | None:
     has_code = bool(attempt.code)
     has_primary_execution_artifact = any(
@@ -91,7 +108,7 @@ def critical_evidence_cap(attempt) -> float | None:
             attempt.compiler_output,
             attempt.runtime_output,
             attempt.test_output,
-            attempt.command_run_metadata,
+            has_primary_command_metadata(attempt),
         ]
     )
 
@@ -103,6 +120,8 @@ def critical_evidence_cap(attempt) -> float | None:
 
     return None
 ```
+
+Command metadata without output summary or linked output is audit context, not a primary artifact for confidence gates.
 
 ### 4.3 Evidence Completeness
 
@@ -271,7 +290,7 @@ def prior_consistency(current_score: float, recent_scores: list[float]) -> float
     return 0.30
 ```
 
-Large score changes are allowed. Prior consistency should primarily dampen update magnitude, not make high-quality current evidence look low quality. Positive jumps and negative drops may use different dampening rules.
+Large score changes are allowed. Prior consistency contributes to progression confidence, not raw evidence confidence. Rust Sensei uses current-attempt evidence to score the attempt, then uses prior consistency to dampen skill updates and gate aggressive progression decisions such as acceleration.
 
 ### 4.7 Task Difficulty Weight
 
@@ -320,8 +339,22 @@ def weighted_mean_required_rubrics(
     required_rubric_ids: list[str],
     rubric_weights: dict[str, float] | None = None,
 ) -> float:
+    if not required_rubric_ids:
+        raise ValueError("required_rubric_ids must not be empty")
+
     if rubric_weights is None:
         rubric_weights = {rubric_id: 1.0 for rubric_id in required_rubric_ids}
+
+    missing = [
+        rubric_id
+        for rubric_id in required_rubric_ids
+        if rubric_id not in rubric_confidences or rubric_id not in rubric_weights
+    ]
+    if missing:
+        raise ValueError(f"Missing rubric confidence or weight for: {missing}")
+
+    if any(rubric_weights[rubric_id] <= 0 for rubric_id in required_rubric_ids):
+        raise ValueError("rubric_weights must be positive")
 
     numerator = sum(
         rubric_confidences[rubric_id] * rubric_weights[rubric_id]
@@ -407,9 +440,15 @@ def update_score(previous: float, observed: float, confidence: float) -> float:
 | Condition | Result |
 | --- | --- |
 | Overall confidence `< 0.45` | Ask for more evidence or repeat |
-| Overall confidence `0.45` to `0.59` | Allow repeat or continue, block acceleration |
+| Overall confidence `0.45` to `0.59` | Allow simplify or repeat, allow continue only when scores clearly meet concept thresholds, block acceleration and branch |
 | Overall confidence `0.60` to `0.79` | Allow simplify, repeat, continue |
 | Overall confidence `>= 0.80` | Allow simplify, repeat, continue, accelerate, branch |
+
+Assessment status mapping:
+
+- If no assessable artifact is present, request validation fails before assessment.
+- If overall confidence is below `0.45`, return `assessment_status: "insufficient_evidence"` and skip skill updates.
+- If overall confidence is at least `0.45`, return assessed scores with confidence dampening.
 
 Boundary tests must cover `0.44`, `0.45`, `0.59`, `0.60`, `0.79`, and `0.80`.
 
@@ -419,7 +458,7 @@ Boundary tests must cover `0.44`, `0.45`, `0.59`, `0.60`, `0.79`, and `0.80`.
 | --- | --- |
 | Full evidence, standard task, consistent history | Overall confidence should usually be at least `0.75` |
 | Missing code but has compiler output and learner notes | Overall confidence is capped at `0.59` |
-| Strong challenge attempt after weak history | Skill update is dampened, but acceleration may be allowed if confidence is at least `0.70` |
+| Strong challenge attempt after weak history | Skill update is dampened, and acceleration requires confidence at least `0.80` |
 | Agent notes conflict with compiler output | Evidence quality is reduced and the contradiction appears in the explanation |
 
 ## 5. LLD Diagram
