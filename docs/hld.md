@@ -152,7 +152,7 @@ Core data concepts:
 - Repository interfaces: learner, curriculum, assessment, and session persistence boundaries.
 - JSON storage adapter: v1 implementation of repository interfaces.
 
-The v1 storage design supports 1 active learner, but the schema must include `learner_id` fields on learner, session, attempt, and assessment records. This supports later migration to multiple learners.
+The v1 storage design supports 1 active learner, but the schema must include `learner_id` fields on learner, session, lesson assignment, attempt, assessment, learner signal, and progress event records. This supports later migration to multiple learners.
 
 The v1 curriculum starts with general Rust fluency:
 
@@ -220,24 +220,25 @@ Requirement mapping:
 1. The learner opens a Rust workspace in VS Code.
 2. The learner starts Codex in the same workspace.
 3. Codex connects to the local Rust Sensei MCP server.
-4. On first use, Rust Sensei asks 1 placement question: `new`, `beginner`, `intermediate`, `proficient`, or `expert`. This satisfies `FR-01`.
-5. Codex calls `start_session`.
-6. Codex calls `get_next_lesson`.
-7. Rust Sensei returns the target concept, prompt, success criteria, hints, and rubric. This satisfies `FR-05`.
-8. Codex explains the assignment to the learner.
-9. The learner writes Rust code in VS Code.
-10. The learner runs the requested command in the VS Code terminal. Early commands include `cargo run` and `cargo check`. This satisfies `FR-07`.
-11. The learner fixes errors or asks Codex for help.
-12. When ready, the learner asks Codex to assess the work.
-13. Codex reads the relevant files and runs verification commands such as `cargo check`, `cargo run`, or `cargo test`.
-14. Codex calls `submit_attempt` with assignment id, code, command output, learner notes, and context. This satisfies `FR-08`.
-15. Rust Sensei persists the attempt and returns a server-generated `attempt_id`.
-16. Codex calls `assess_attempt` with the `attempt_id`.
-17. Rust Sensei returns an existing assessment for duplicate assessment requests or creates one assessment for a new attempt.
-18. Rust Sensei scores the attempt across rubric dimensions and updates learner state. This satisfies `FR-02`, `FR-03`, and `FR-04`.
-19. Rust Sensei returns feedback, evidence, confidence, and one next-step action: `simplify`, `repeat`, `continue`, `accelerate`, or `branch`. This satisfies `FR-05`.
-20. Codex presents coaching feedback and the next learning step.
-21. The learner continues the cycle.
+4. Codex calls `start_session`.
+5. If no profile exists, Rust Sensei returns `placement_required: true` with allowed choices: `new`, `beginner`, `intermediate`, `proficient`, or `expert`. This satisfies `FR-01`.
+6. Codex asks the learner the placement question and calls `start_session` again with the selected value.
+7. Codex calls `get_next_lesson`.
+8. Rust Sensei returns the active assignment or creates a new assignment with target concept, prompt, success criteria, hints, and rubric. This satisfies `FR-05`.
+9. Codex explains the assignment to the learner.
+10. The learner writes Rust code in VS Code.
+11. The learner runs the requested command in the VS Code terminal. Early commands include `cargo run` and `cargo check`. This satisfies `FR-07`.
+12. The learner fixes errors or asks Codex for help.
+13. When ready, the learner asks Codex to assess the work.
+14. Codex reads the relevant files and runs verification commands such as `cargo check`, `cargo run`, or `cargo test`.
+15. Codex calls `submit_attempt` with assignment id, code, command output, learner notes, and context. This satisfies `FR-08`.
+16. Rust Sensei persists the attempt and returns a server-generated `attempt_id`.
+17. Codex calls `assess_attempt` with the `attempt_id`.
+18. Rust Sensei returns an existing assessment for duplicate assessment requests or creates one assessment for a new attempt.
+19. Rust Sensei scores the attempt across rubric dimensions and updates learner state. This satisfies `FR-02`, `FR-03`, and `FR-04`.
+20. Rust Sensei returns feedback, evidence, confidence, and one next-step action: `simplify`, `repeat`, `continue`, `accelerate`, or `branch`. This satisfies `FR-05`.
+21. Codex presents coaching feedback and the next learning step.
+22. The learner continues the cycle.
 
 Example adaptive outcomes:
 
@@ -306,7 +307,7 @@ Example adaptive outcomes:
 
 ### 7.9 Agent Submits Incomplete Attempt
 
-- Trigger: Missing lesson id, code, command output, or context fields.
+- Trigger: Missing assignment id, code, command output, or context fields.
 - Related requirements: `FR-08`, `NFR-04`.
 - Expected behavior: Rust Sensei returns a structured validation error with missing fields.
 - Assessment behavior: No learner skill update occurs.

@@ -76,10 +76,10 @@ Rust Sensei responsibilities:
 The agent must follow the server placement protocol.
 
 1. Call `start_session`.
-2. If the response includes `placement_required: true`, ask exactly 1 question with these choices: `new`, `beginner`, `intermediate`, `proficient`, `expert`.
+2. If the response includes `placement_required: true`, ask exactly 1 placement prompt with these choices: `new`, `beginner`, `intermediate`, `proficient`, `expert`.
 3. Call `start_session` again with the selected value.
 4. Do not ask the placement question again once Rust Sensei returns an existing profile.
-5. If the learner gives an invalid value, ask them to choose one of the allowed values without creating a new label.
+5. If the learner gives an invalid value, treat correction as validation handling for the same placement prompt. Ask them to choose one of the allowed values without creating a new label.
 
 ### 4.3 Verification Command Policy
 
@@ -100,6 +100,9 @@ Rules:
 - Do not run destructive commands.
 - Do not run commands unrelated to the Rust project.
 - If a lesson needs another command, Rust Sensei must return it explicitly in the lesson plan.
+- Non-allowlisted lesson commands require clear lesson metadata, including `purpose` and `risk_level`.
+- Non-allowlisted lesson commands require learner confirmation before execution.
+- Destructive commands remain disallowed for v1 even if a lesson includes them.
 
 ### 4.4 Codex Setup
 
@@ -144,6 +147,16 @@ attempt_payload = {
     "learner_execution_missing": False,
     "learner_execution_notes": None,
     "verification_commands_run_by_agent": ["cargo check"],
+    "command_run_metadata": [
+        {
+            "command": "cargo check",
+            "exit_code": 0,
+            "started_at": "2026-05-10T18:00:00Z",
+            "duration_ms": 842,
+            "output_summary": "cargo check completed successfully",
+            "output_truncated": False
+        }
+    ],
     "compiler_output": "...",
     "runtime_output": "...",
     "test_output": None,

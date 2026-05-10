@@ -138,6 +138,7 @@ class GetNextLessonRequest(BaseModel):
     learner_id: str = "local-default"
     force_new_variant: bool = False
     abandon_active_assignment: bool = False
+    abandonment_reason: str | None = None
 
 
 class GetNextLessonResponse(BaseModel):
@@ -152,9 +153,15 @@ class SubmitAttemptRequest(BaseModel):
     client_request_id: str | None = None
     code: str
     file_paths: list[str] = Field(default_factory=list)
+    commands_run_by_learner: list[str] = Field(default_factory=list)
+    verification_commands_run_by_agent: list[str] = Field(default_factory=list)
     compiler_output: str | None = None
     runtime_output: str | None = None
     test_output: str | None = None
+    command_run_metadata: list[dict] = Field(default_factory=list)
+    output_truncated: bool = False
+    truncation_reason: str | None = None
+    omitted_files: list[str] = Field(default_factory=list)
     learner_notes: str | None = None
     agent_notes: str | None = None
     learner_execution_missing: bool = False
@@ -173,6 +180,8 @@ class AssessAttemptResponse(BaseModel):
     assessment: AssessmentResult
     already_assessed: bool
 ```
+
+DTO mapping rule: MCP request and response models are Pydantic DTOs. Domain models may use dataclasses internally. Services must map explicitly between API DTOs and domain models instead of returning raw dataclasses through the MCP boundary.
 
 ### 4.4 Data Models
 
@@ -245,9 +254,15 @@ class AttemptSubmission:
     client_request_id: str | None
     code: str
     file_paths: list[str]
+    commands_run_by_learner: list[str]
+    verification_commands_run_by_agent: list[str]
     compiler_output: str | None
     runtime_output: str | None
     test_output: str | None
+    command_run_metadata: list[dict]
+    output_truncated: bool
+    truncation_reason: str | None
+    omitted_files: list[str]
     learner_notes: str | None
     agent_notes: str | None
     learner_execution_missing: bool
@@ -260,7 +275,11 @@ class AssessmentResult:
     attempt_id: str
     assignment_id: str
     scoring_version: str
+    assessment_status: Literal["assessed", "insufficient_evidence"]
     rubric_scores: dict[str, SkillScore]
+    confidence_breakdown: dict
+    missing_evidence: list[str]
+    feedback_items: list[dict]
     next_action: NextAction
     feedback_summary: str
     confidence: float
@@ -287,6 +306,9 @@ class ProgressEvent:
     assignment_id: str | None
     attempt_id: str | None
     assessment_id: str | None
+    details: dict
+    previous_status: str | None
+    new_status: str | None
     created_at: datetime
 ```
 
@@ -370,6 +392,9 @@ JSON repository rules:
 - `start_session` creates the learner profile only after a valid placement is provided.
 - `get_next_lesson` returns an active unattempted assignment if one exists.
 - `get_next_lesson` creates a new assignment only when no active assignment exists, the prior assignment was assessed or abandoned, or `force_new_variant` is true.
+- `abandon_active_assignment` requires `abandonment_reason`.
+- If `force_new_variant` and `abandon_active_assignment` are both true, the server abandons the active assignment first, records an `abandoned` event, then creates a new assignment.
+- If `force_new_variant` is true without abandonment, the server creates a new variant only when this does not violate assignment state invariants.
 - Returning an existing assignment records `assignment_viewed`, not `assignment_created`.
 - Creating a new assignment records `assignment_created`.
 - `submit_attempt` does not accept `attempt_id`; the server generates it.

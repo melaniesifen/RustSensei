@@ -77,16 +77,18 @@ class ConceptSpec:
 
 
 @dataclass
-class LessonSelection:
-    assignment_id: str
+class LessonSelectionDecision:
     lesson_id: str
     concept_id: str
     difficulty: Difficulty
     variant_id: str
+    branch_id: str | None
     next_action_reason: str
     skipped_concepts: list[str]
     prompt_inputs: dict[str, str]
 ```
+
+`LessonSelectionDecision` is an internal pre-assignment object. The MCP server maps it to the persisted `LessonAssignment`, which owns assignment status, timestamps, curriculum version, and learner id.
 
 ### 4.2 Example Concept Spec
 
@@ -210,6 +212,8 @@ Placement skip behavior:
 
 Next-step action selection must use ordered rules instead of a hardcoded conditional chain. The first matching rule wins. New action types or thresholds should be added by changing rule data or adding a rule object.
 
+Specific branch and remediation rules must run before broad low-score rules.
+
 ```python
 from dataclasses import dataclass
 from typing import Callable
@@ -219,6 +223,7 @@ from typing import Callable
 class NextStepRule:
     rule_id: str
     action: str
+    branch_id: str | None
     predicate: Callable[["AssessmentSummary"], bool]
     reason: str
 
@@ -227,18 +232,14 @@ NEXT_STEP_RULES = [
     NextStepRule(
         rule_id="low_confidence_repeat",
         action="repeat",
+        branch_id=None,
         predicate=lambda a: a.confidence < 0.45,
         reason="Assessment confidence is below 0.45.",
     ),
     NextStepRule(
-        rule_id="rust_gap_simplify",
-        action="simplify",
-        predicate=lambda a: a.rust_score < 0.50,
-        reason="Rust concept score is below 0.50.",
-    ),
-    NextStepRule(
         rule_id="compiler_feedback_branch",
         action="branch",
+        branch_id="compiler_feedback_remediation",
         predicate=lambda a: (
             a.compiler_error_handling_score < 0.50
             and a.recent_compile_failures >= 2
@@ -248,6 +249,7 @@ NEXT_STEP_RULES = [
     NextStepRule(
         rule_id="problem_solving_branch",
         action="branch",
+        branch_id="problem_solving_enrichment",
         predicate=lambda a: (
             a.rust_score >= 0.70
             and a.problem_solving_score < 0.55
@@ -256,8 +258,16 @@ NEXT_STEP_RULES = [
         reason="Rust syntax is progressing faster than problem-solving skill.",
     ),
     NextStepRule(
+        rule_id="rust_gap_simplify",
+        action="simplify",
+        branch_id=None,
+        predicate=lambda a: a.rust_score < 0.50,
+        reason="Rust concept score is below 0.50.",
+    ),
+    NextStepRule(
         rule_id="strong_performance_accelerate",
         action="accelerate",
+        branch_id=None,
         predicate=lambda a: (
             a.rust_score >= 0.85
             and a.general_programming_score >= 0.80
@@ -268,21 +278,29 @@ NEXT_STEP_RULES = [
     NextStepRule(
         rule_id="expected_progress_continue",
         action="continue",
+        branch_id=None,
         predicate=lambda a: a.rust_score >= 0.70 and a.confidence >= 0.60,
         reason="Rust score and confidence meet continuation thresholds.",
     ),
 ]
 
 
-def choose_next_action(assessment: "AssessmentSummary") -> tuple[str, str]:
+def choose_next_action(assessment: "AssessmentSummary") -> tuple[str, str | None, str]:
     for rule in NEXT_STEP_RULES:
         if rule.predicate(assessment):
-            return rule.action, rule.reason
+            return rule.action, rule.branch_id, rule.reason
 
-    return "repeat", "No higher-priority rule matched."
+    return "repeat", None, "No higher-priority rule matched."
 ```
 
 Thresholds are v1 defaults. They should be tuned after at least 20 assessed attempts from real usage.
+
+Branch target semantics:
+
+- `branch_targets` keys are stable `branch_id` values.
+- A next-step rule returning `branch` must also return a `branch_id`.
+- `select_branch_lesson` resolves the branch by looking up `concept.branch_targets[branch_id]`.
+- Branches may be remediation, enrichment, or temporary alternate paths. The branch id defines the branch purpose.
 
 ### 4.7 Mastery And Completion Rules
 
@@ -307,6 +325,13 @@ Lesson selection uses persisted assignment history.
 - Each assignment includes `assignment_id`, `lesson_id`, `concept_id`, `difficulty`, `variant_id`, `selection_rationale`, and `curriculum_version`.
 - Variant selection must be deterministic from stable inputs such as learner id, concept id, difficulty, curriculum version, and repeat count.
 - The same `variant_id` should not be assigned more than 2 times in a row for the same concept and difficulty.
+
+Variant exhaustion behavior:
+
+- Prefer a variant not used in the last 2 created assignments for the same concept and difficulty.
+- If all variants were used recently and confidence is below `0.45`, ask for missing evidence or repeat with the least recent variant.
+- If all variants were used recently and the learner is struggling, lower difficulty before reusing a variant.
+- If reuse is unavoidable, allow reuse only with an explicit selection rationale.
 
 ### 4.9 Curriculum Validation
 

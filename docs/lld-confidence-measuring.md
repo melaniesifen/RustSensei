@@ -199,10 +199,31 @@ def rubric_confidence(attempt, rubric_id: str) -> float:
     for field_name, weight in weights.items():
         if getattr(attempt, field_name, None):
             score += weight
-    return min(score * evidence_quality(attempt), 1.0)
+    capped = apply_rubric_evidence_cap(attempt, rubric_id, score)
+    return min(capped * evidence_quality(attempt), 1.0)
 ```
 
 Agent notes can contribute to rubrics such as readability, but they should not outweigh primary artifacts.
+
+Rubric-specific evidence caps:
+
+```python
+CODE_DEPENDENT_RUBRICS = {
+    "rust_idioms",
+    "readability",
+    "maintainability",
+}
+
+
+def apply_rubric_evidence_cap(attempt, rubric_id: str, confidence: float) -> float:
+    if rubric_id in CODE_DEPENDENT_RUBRICS and not attempt.code:
+        return min(confidence, 0.35)
+
+    if rubric_id == "compiler_error_handling" and not attempt.compiler_output:
+        return min(confidence, 0.50)
+
+    return confidence
+```
 
 ### 4.6 Prior Consistency
 
@@ -262,16 +283,19 @@ For v1, recency is `1.0` for the current attempt. Historical scores older than 3
 WEIGHTS = {
     "evidence_completeness": 0.35,
     "evidence_quality": 0.25,
-    "prior_consistency": 0.20,
+    "rubric_confidence": 0.20,
+    "prior_consistency": 0.10,
     "task_difficulty_weight": 0.15,
     "recency_weight": 0.05,
 }
 
 
 def overall_confidence(breakdown: ConfidenceBreakdown) -> float:
+    rubric_confidence = weighted_mean_required_rubrics(breakdown.rubric_confidences)
     value = (
         breakdown.evidence_completeness * WEIGHTS["evidence_completeness"]
         + breakdown.evidence_quality * WEIGHTS["evidence_quality"]
+        + rubric_confidence * WEIGHTS["rubric_confidence"]
         + breakdown.prior_consistency * WEIGHTS["prior_consistency"]
         + breakdown.task_difficulty_weight * WEIGHTS["task_difficulty_weight"]
         + breakdown.recency_weight * WEIGHTS["recency_weight"]
@@ -415,7 +439,7 @@ Diagram description:
 ### 7.3 Conflicting Evidence
 
 - Trigger: Agent notes say the code compiles, but compiler output contains errors.
-- Expected behavior: Prior or internal consistency is reduced.
+- Expected behavior: Evidence quality or internal consistency is reduced.
 - Requirement link: `CM-FR-05`.
 
 ### 7.4 One Strong Attempt After Weak History
@@ -435,7 +459,7 @@ Diagram description:
 ### A.1 Future Changes Discussed
 
 - Tune thresholds after 20 or more real assessed attempts.
-- Add per-rubric confidence formulas.
+- Expand per-rubric confidence formulas.
 - Add spaced repetition confidence decay by concept.
 - Add calibration reports that compare predicted difficulty to learner outcomes.
 - Add optional model-assisted confidence explanation, while keeping formula output as source of truth.
