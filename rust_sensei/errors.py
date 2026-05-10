@@ -36,6 +36,10 @@ class StorageError(RustSenseiError):
     pass
 
 
+class IdempotencyConflictError(RustSenseiError):
+    pass
+
+
 def validation_error(message: str, **details: Any) -> ValidationError:
     return ValidationError(
         ErrorEnvelope(
@@ -65,5 +69,19 @@ def storage_error(message: str, retryable: bool = True, **details: Any) -> Stora
             message=message,
             details=details,
             retryable=retryable,
+        )
+    )
+
+
+def idempotency_conflict_error(
+    message: str,
+    **details: Any,
+) -> IdempotencyConflictError:
+    return IdempotencyConflictError(
+        ErrorEnvelope(
+            error_code="idempotency_conflict",
+            message=message,
+            details=details,
+            retryable=False,
         )
     )

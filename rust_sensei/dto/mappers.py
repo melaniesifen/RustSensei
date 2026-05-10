@@ -1,3 +1,4 @@
+from rust_sensei.domain.attempt import CommandRunMetadata
 from rust_sensei.domain.curriculum import Concept, LessonCommand, LessonVariant
 from rust_sensei.domain.learner import LearnerProfile
 from rust_sensei.domain.lesson import LessonAssignment
@@ -8,6 +9,7 @@ from rust_sensei.dto.lesson import (
     LessonCommandDTO,
     LessonPlanDTO,
 )
+from rust_sensei.dto.attempt import CommandRunMetadataDTO
 from rust_sensei.dto.session import LearnerProfileDTO, SkillScoreDTO
 from rust_sensei.dto.setup import SetupCheckDTO
 
@@ -100,3 +102,22 @@ def lesson_command_to_dto(command: LessonCommand) -> LessonCommandDTO:
 
 def _lesson_id(concept_id: str, variant_id: str) -> str:
     return f"{concept_id}:{variant_id}"
+
+
+def command_metadata_from_dto(dto: CommandRunMetadataDTO) -> CommandRunMetadata:
+    return CommandRunMetadata(
+        command=dto.command,
+        source=dto.source,
+        cwd=dto.cwd,
+        exit_code=dto.exit_code,
+        started_at=dto.started_at,
+        duration_ms=dto.duration_ms,
+        timed_out=dto.timed_out,
+        timeout_ms=dto.timeout_ms,
+        output_summary=dto.output_summary,
+        output_truncated=dto.output_truncated,
+        stdout_truncated=dto.stdout_truncated,
+        stderr_truncated=dto.stderr_truncated,
+        purpose=dto.purpose,
+        risk_level=dto.risk_level,
+    )
