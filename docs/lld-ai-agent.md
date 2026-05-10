@@ -28,6 +28,8 @@ Primary requirement links:
 - `AA-FR-08`: The agent must call `assess_attempt` and present the returned feedback.
 - `AA-FR-09`: The agent must preserve Rust Sensei as the source of truth for learner state and progression.
 - `AA-FR-10`: The agent must not invent skill scores that were not returned by Rust Sensei.
+- `AA-FR-11`: The agent must ask the Rust placement question only when Rust Sensei returns `placement_required: true`.
+- `AA-FR-12`: The agent must run verification commands only when the learner requests verification or when the lesson explicitly calls for them.
 
 ## 3. Non-Functional Requirements
 
@@ -48,11 +50,12 @@ The agent acts as a bridge between 3 things:
 
 The agent should not own the curriculum or scoring model. It can explain, summarize, and coach, but persisted decisions come from Rust Sensei.
 
-### 4.1 Agent Operating Contract
+### 4.1 Generic MCP Agent Contract
 
 ```text
 Agent responsibilities:
   - Start or resume Rust Sensei sessions.
+  - Ask the placement question only when Rust Sensei requires it.
   - Present lesson prompts.
   - Encourage the learner to run commands first.
   - Read local files for assessment.
@@ -68,7 +71,37 @@ Rust Sensei responsibilities:
   - Store progress.
 ```
 
-### 4.2 Codex Setup
+### 4.2 Placement Handling
+
+The agent must follow the server placement protocol.
+
+1. Call `start_session`.
+2. If the response includes `placement_required: true`, ask exactly 1 question with these choices: `new`, `beginner`, `intermediate`, `proficient`, `expert`.
+3. Call `start_session` again with the selected value.
+4. Do not ask the placement question again once Rust Sensei returns an existing profile.
+5. If the learner gives an invalid value, ask them to choose one of the allowed values without creating a new label.
+
+### 4.3 Verification Command Policy
+
+Agent verification commands execute learner code or inspect learner code, so they are allowed verification commands, not safe commands.
+
+Allowed v1 verification commands:
+
+- `cargo check`
+- `cargo run`
+- `cargo test`
+- `cargo fmt --check` if formatting assessment is enabled
+
+Rules:
+
+- Run commands only from the learner workspace root.
+- Run `cargo run` or `cargo test` only when the learner asks for verification or the lesson explicitly calls for it.
+- Use a timeout. Default timeout is 30 seconds for `cargo check` and 60 seconds for `cargo run` or `cargo test`.
+- Do not run destructive commands.
+- Do not run commands unrelated to the Rust project.
+- If a lesson needs another command, Rust Sensei must return it explicitly in the lesson plan.
+
+### 4.4 Codex Setup
 
 Codex supports MCP server management through `codex mcp`.
 
@@ -81,45 +114,69 @@ codex mcp list
 
 If the app-bundled Codex binary is not on `PATH`, use the full binary path or fix the shell profile before running the setup.
 
-### 4.3 Agent System Prompt Snippet
+### 4.5 Agent System Prompt Snippet
 
 ```text
 You are using Rust Sensei as the source of truth for Rust lesson progression.
 
 Rules:
 1. Call start_session before requesting a lesson.
-2. Call get_next_lesson before assigning work.
-3. Ask the learner to run the lesson command themselves when provided.
-4. Do not assess final performance without submitting the attempt to Rust Sensei.
-5. When assessing, collect code, compiler output, runtime output, test output, learner notes, and your notes when available.
-6. Present Rust Sensei feedback without inventing additional scores.
-7. If the learner is stuck, use update_learner_signal before changing lesson difficulty.
+2. Ask the placement question only when start_session returns placement_required: true.
+3. Call get_next_lesson before assigning work.
+4. Ask the learner to run the lesson command themselves when provided.
+5. Do not assess final performance without submitting the attempt to Rust Sensei.
+6. When assessing, collect assignment id, code, compiler output, runtime output, test output, learner notes, and your notes when available.
+7. Preserve Rust Sensei scores, confidence, evidence, and next-step action exactly.
+8. If you add extra advice, label it as agent guidance and do not change progression.
+9. If the learner is stuck, use update_learner_signal before changing lesson difficulty.
 ```
 
-### 4.4 Attempt Collection Shape
+### 4.6 Attempt Collection Shape
 
 ```python
 attempt_payload = {
     "learner_id": "local-default",
-    "lesson_id": "variables_primitive_types_001",
+    "assignment_id": "assign_01HX...",
     "workspace_root": "/path/to/rust/project",
     "file_paths": ["src/main.rs"],
     "code": "fn main() { ... }",
     "commands_run_by_learner": ["cargo run"],
+    "learner_execution_missing": False,
+    "learner_execution_notes": None,
     "verification_commands_run_by_agent": ["cargo check"],
     "compiler_output": "...",
     "runtime_output": "...",
     "test_output": None,
+    "output_truncated": False,
+    "truncation_reason": None,
+    "omitted_files": [],
     "learner_notes": "I was not sure when to use mut.",
     "agent_notes": "The code compiles. Variable names are descriptive."
 }
 ```
 
-### 4.5 Agent Decision Rules
+Payload guidance:
+
+- Prefer relevant files over entire workspaces.
+- Prefer paths relative to the workspace root.
+- Do not submit secrets, environment files, credentials, or unrelated source files.
+- Truncate large command output with an explicit truncation marker.
+- Agent notes are diagnostic context. They are not canonical assessment results.
+
+### 4.7 Feedback Rephrasing Rules
+
+- The agent may summarize feedback in learner-friendly language.
+- The agent must preserve scores, confidence, evidence, and next-step action exactly.
+- The agent must not invent rubric scores.
+- Extra advice must be separated from Rust Sensei assessment.
+- Extra advice must not change learner progression.
+
+### 4.8 Agent Decision Rules
 
 | Situation | Agent action |
 | --- | --- |
 | New session | Call `start_session` |
+| Rust Sensei returns `placement_required: true` | Ask exactly 1 placement question using allowed choices |
 | Learner asks what to do next | Call `get_next_lesson` |
 | Learner says they are done | Run verification, call `submit_attempt`, then call `assess_attempt` |
 | Learner is stuck | Ask 1 focused question or call `update_learner_signal` |
@@ -140,14 +197,14 @@ sequenceDiagram
     U->>A: Ask for next Rust lesson
     A->>S: start_session
     A->>S: get_next_lesson
-    S-->>A: Lesson plan and rubric
+    S-->>A: Lesson assignment and rubric
     A-->>U: Explain assignment and learner command
     U->>V: Write code
     U->>C: Run learner command
     U->>A: Request assessment
     A->>W: Read relevant files
     A->>C: Run verification command
-    A->>S: submit_attempt
+    A->>S: submit_attempt with assignment_id
     A->>S: assess_attempt
     S-->>A: Scores, feedback, next action
     A-->>U: Present feedback and next step
@@ -186,7 +243,7 @@ Diagram description:
 ### 7.2 Learner Did Not Run The Command
 
 - Trigger: The learner requests assessment without running the lesson command.
-- Expected behavior: Agent may still verify, but should record that learner-owned execution is missing.
+- Expected behavior: Agent may still verify, but must send `learner_execution_missing: true` and must not claim command practice occurred.
 - Requirement link: `FR-07`.
 
 ### 7.3 Verification Command Fails
@@ -206,6 +263,12 @@ Diagram description:
 - Trigger: Agent invents scores or changes the next-step action.
 - Expected behavior: Treat as agent behavior bug. Rust Sensei remains source of truth.
 - Requirement link: `AA-FR-10`.
+
+### 7.6 Verification Command Not Allowed
+
+- Trigger: A requested command is outside the allowed verification command list and was not provided by Rust Sensei.
+- Expected behavior: Agent does not run the command and asks for explicit learner approval or a revised lesson command.
+- Requirement link: `AA-FR-12`.
 
 ## Appendix A. Future Changes
 

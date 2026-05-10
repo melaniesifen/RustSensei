@@ -52,9 +52,11 @@ This design supports these primary requirements:
 
 - `FR-04`: Rust Sensei must assess submitted work across rubric dimensions including correctness, readability, maintainability, problem solving, DSA, Rust idioms, and compiler-error handling.
 - `FR-04`: Each rubric dimension must produce a score, confidence value, and evidence summary.
-- `FR-08`: Rust Sensei must accept assessment input containing lesson id, submitted code, relevant file paths, compiler output, runtime output, test output, learner notes, and agent notes when available.
+- `FR-08`: Rust Sensei must accept assessment input containing assignment id, submitted code, relevant file paths, compiler output, runtime output, test output, learner notes, and agent notes when available.
 - `FR-02`: Assessment must update both Rust-specific skill and general programming skill.
 - `FR-04`: Assessment must support hybrid signals from code, command output, learner notes, and conversation summaries.
+- `FR-04`: Rust Sensei owns canonical scoring and progression decisions. Agent notes are evidence or diagnostic context, not authoritative assessment results.
+- `FR-04`: Rust Sensei may return insufficient evidence instead of assigning full rubric scores when critical artifacts are missing.
 
 ### 2.5 Execution Flow
 
@@ -72,9 +74,9 @@ This design supports these primary requirements:
 Planned MCP tools:
 
 - `start_session`: Create or resume the active learner session.
-- `get_next_lesson`: Return the next lesson plan, prompt, criteria, and rubric.
-- `submit_attempt`: Submit code, command output, notes, and context for assessment.
-- `assess_attempt`: Assess an attempt and return scores, evidence, feedback, and next-step action.
+- `get_next_lesson`: Return the active lesson assignment or create a new assignment when progression requires it.
+- `submit_attempt`: Persist code, command output, notes, and context for a lesson assignment.
+- `assess_attempt`: Assess an attempt exactly once and return scores, evidence, feedback, and next-step action.
 - `get_learner_profile`: Return current learner profile and skill estimates.
 - `get_progress_summary`: Return completed concepts, current concept, trend, and recommended focus.
 - `update_learner_signal`: Record non-code signals such as confusion, confidence, or self-reported blockers.
@@ -84,8 +86,29 @@ Planned MCP tools:
 
 - `FR-09`: v1 must store learner state in local JSON.
 - `FR-10`: Persistence must be accessed through repository interfaces.
+- `FR-10`: JSON read-modify-write operations must use a single-writer lock and a state revision value to prevent lost updates.
+- `FR-10`: Progress summaries must be derived from canonical records where possible.
+- `FR-10`: Rust Sensei must persist lesson assignments, attempts, assessments, learner signals, and progress events for auditability.
 - `FR-13`: The project must include a setup and diagnostics path.
 - `FR-13`: A future `doctor` command must check Python, Rust, Cargo, writable state path, lesson catalog availability, and MCP server startup.
+
+### 2.8 Session And Placement Protocol
+
+- `FR-01`: `start_session` with no existing profile and no placement value must return `placement_required: true` and the allowed choices.
+- `FR-01`: The agent must ask exactly 1 placement question using the allowed choices.
+- `FR-01`: The agent must call `start_session` again with the selected placement value.
+- `FR-01`: Rust Sensei must create the profile only after receiving a valid placement value.
+- `FR-01`: After placement is persisted, Rust Sensei must not ask the placement question again for that learner.
+- `FR-01`: Invalid placement values must return validation errors without creating a profile.
+
+### 2.9 Assignment And Assessment Protocol
+
+- `FR-05`: `get_next_lesson` must persist a `LessonAssignment` when it creates a new instructional assignment.
+- `FR-05`: `get_next_lesson` must return the active unattempted assignment by default instead of creating duplicate assignments.
+- `FR-05`: A new assignment may be created after assessment changes progression, after explicit abandonment, or when the client requests a new variant through a defined parameter.
+- `FR-08`: `submit_attempt` must persist an attempt and return a server-generated `attempt_id`.
+- `FR-08`: `submit_attempt` must link each attempt to the exact `assignment_id` the learner received.
+- `FR-04`: `assess_attempt` must be idempotent. Retrying it for an already assessed attempt returns the existing assessment and must not update skill scores twice.
 
 ## 3. Non-Functional Requirements
 
@@ -99,6 +122,7 @@ Planned MCP tools:
 - `NFR-08`: Storage adapter boundaries must be explicit.
 - `NFR-09`: Local state writes must be atomic to reduce the chance of corrupt JSON.
 - `NFR-10`: The server must be usable without network access after dependencies are installed.
+- `NFR-11`: Local state updates must be protected from lost updates through file locking or an equivalent single-writer mechanism.
 
 ## 4. HLD Summary
 
@@ -121,9 +145,10 @@ Core data concepts:
 - Learner profile: learner id, initial Rust level, current skill estimates, preferences, and active path.
 - Skill model: Rust concept scores, general programming scores, confidence, and evidence.
 - Concept graph: ordered Rust concepts with prerequisites and adaptive policies.
-- Lesson attempt: lesson id, code, outputs, notes, timestamps, and workspace references.
-- Assessment result: scores, evidence, feedback, confidence, and next-step action.
-- Progress history: completed concepts, repeated concepts, skipped concepts, and branches.
+- Lesson assignment: assignment id, lesson id, concept id, difficulty, variant id, selection rationale, curriculum version, status, and timestamps.
+- Lesson attempt: assignment id, code, outputs, notes, timestamps, and workspace references.
+- Assessment result: attempt id, scores, evidence, feedback, confidence, scoring version, and next-step action.
+- Progress event: append-only record of assignment, attempt, assessment, completion, repeat, simplification, acceleration, branch, reopen, abandonment, or view events.
 - Repository interfaces: learner, curriculum, assessment, and session persistence boundaries.
 - JSON storage adapter: v1 implementation of repository interfaces.
 
@@ -205,12 +230,14 @@ Requirement mapping:
 11. The learner fixes errors or asks Codex for help.
 12. When ready, the learner asks Codex to assess the work.
 13. Codex reads the relevant files and runs verification commands such as `cargo check`, `cargo run`, or `cargo test`.
-14. Codex calls `submit_attempt` with code, command output, learner notes, and context. This satisfies `FR-08`.
-15. Codex calls `assess_attempt`, or `submit_attempt` triggers assessment as part of the same workflow.
-16. Rust Sensei scores the attempt across rubric dimensions and updates learner state. This satisfies `FR-02`, `FR-03`, and `FR-04`.
-17. Rust Sensei returns feedback, evidence, confidence, and one next-step action: `simplify`, `repeat`, `continue`, `accelerate`, or `branch`. This satisfies `FR-05`.
-18. Codex presents coaching feedback and the next learning step.
-19. The learner continues the cycle.
+14. Codex calls `submit_attempt` with assignment id, code, command output, learner notes, and context. This satisfies `FR-08`.
+15. Rust Sensei persists the attempt and returns a server-generated `attempt_id`.
+16. Codex calls `assess_attempt` with the `attempt_id`.
+17. Rust Sensei returns an existing assessment for duplicate assessment requests or creates one assessment for a new attempt.
+18. Rust Sensei scores the attempt across rubric dimensions and updates learner state. This satisfies `FR-02`, `FR-03`, and `FR-04`.
+19. Rust Sensei returns feedback, evidence, confidence, and one next-step action: `simplify`, `repeat`, `continue`, `accelerate`, or `branch`. This satisfies `FR-05`.
+20. Codex presents coaching feedback and the next learning step.
+21. The learner continues the cycle.
 
 Example adaptive outcomes:
 
@@ -290,6 +317,20 @@ Example adaptive outcomes:
 - Related requirements: `FR-09`, `FR-13`, `NFR-09`.
 - Expected behavior: Rust Sensei reports the path and required permission.
 - Assessment behavior: No assessment should be accepted if progress cannot be persisted.
+
+### 7.11 Concurrent State Update
+
+- Trigger: 2 mutating MCP calls attempt to update JSON state at the same time.
+- Related requirements: `FR-10`, `NFR-11`.
+- Expected behavior: Rust Sensei serializes writes through a lock or returns a retryable conflict error.
+- Assessment behavior: No skill score should be updated from stale state.
+
+### 7.12 Duplicate Lesson Request
+
+- Trigger: The agent calls `get_next_lesson` multiple times before the learner submits an attempt.
+- Related requirements: `FR-05`, `FR-10`.
+- Expected behavior: Rust Sensei returns the active unattempted assignment and records a view event instead of creating duplicate assignments.
+- Assessment behavior: Prompt-repeat logic should count created assignments, not view events.
 
 ## Appendix A. Future Changes
 

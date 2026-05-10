@@ -37,6 +37,11 @@ Primary requirement links:
 - `MS-FR-11`: The server must use repository interfaces for persistence.
 - `MS-FR-12`: The server must validate all tool inputs before updating state.
 - `MS-FR-13`: The server must use atomic JSON writes for state updates.
+- `MS-FR-14`: The server must generate canonical ids for assignments, attempts, assessments, and progress events.
+- `MS-FR-15`: The server must persist `LessonAssignment` records when it creates new lesson assignments.
+- `MS-FR-16`: `get_next_lesson` must return an active unattempted assignment by default.
+- `MS-FR-17`: `assess_attempt` must be idempotent for the same `attempt_id`.
+- `MS-FR-18`: The server must expose typed request and response contracts for each MCP tool.
 
 ## 3. Non-Functional Requirements
 
@@ -47,6 +52,8 @@ Primary requirement links:
 - `MS-NFR-05`: Tool return values must be structured JSON-compatible objects.
 - `MS-NFR-06`: Validation errors must not update learner state.
 - `MS-NFR-07`: Direct JSON access must be limited to storage adapter modules.
+- `MS-NFR-08`: Request validation should use Pydantic or an equivalent runtime validation layer.
+- `MS-NFR-09`: JSON writes must use atomic replace plus a single-writer lock around read-modify-write operations.
 
 ## 4. LLD Summary
 
@@ -92,7 +99,7 @@ rust_sensei/
 | Tool | Side effect | Purpose |
 | --- | --- | --- |
 | `start_session` | Yes | Create or resume the active learner session |
-| `get_next_lesson` | No | Return the next adaptive lesson |
+| `get_next_lesson` | Yes | Return an active assignment or create a new lesson assignment |
 | `submit_attempt` | Yes | Persist a learner attempt |
 | `assess_attempt` | Yes | Score an attempt and update learner state |
 | `get_learner_profile` | No | Return profile and skill estimates |
@@ -100,7 +107,74 @@ rust_sensei/
 | `update_learner_signal` | Yes | Record a non-code learner signal |
 | `get_setup_status` | No | Return local setup status |
 
-### 4.3 Data Models
+### 4.3 Tool Contracts
+
+Tool inputs and outputs should be implemented as Pydantic models. The server should not expose loose `dict` payloads except at the MCP SDK boundary.
+
+```python
+from pydantic import BaseModel, Field
+
+
+class ErrorEnvelope(BaseModel):
+    error_code: str
+    message: str
+    details: dict = Field(default_factory=dict)
+    retryable: bool = False
+
+
+class StartSessionRequest(BaseModel):
+    learner_id: str = "local-default"
+    initial_rust_level: RustLevel | None = None
+
+
+class StartSessionResponse(BaseModel):
+    learner_id: str
+    placement_required: bool
+    allowed_placements: list[RustLevel] = Field(default_factory=list)
+    profile: LearnerProfile | None = None
+
+
+class GetNextLessonRequest(BaseModel):
+    learner_id: str = "local-default"
+    force_new_variant: bool = False
+    abandon_active_assignment: bool = False
+
+
+class GetNextLessonResponse(BaseModel):
+    assignment: LessonAssignment
+    lesson_plan: LessonPlan
+    reused_active_assignment: bool
+
+
+class SubmitAttemptRequest(BaseModel):
+    learner_id: str = "local-default"
+    assignment_id: str
+    client_request_id: str | None = None
+    code: str
+    file_paths: list[str] = Field(default_factory=list)
+    compiler_output: str | None = None
+    runtime_output: str | None = None
+    test_output: str | None = None
+    learner_notes: str | None = None
+    agent_notes: str | None = None
+    learner_execution_missing: bool = False
+
+
+class SubmitAttemptResponse(BaseModel):
+    attempt_id: str
+    already_submitted: bool
+
+
+class AssessAttemptRequest(BaseModel):
+    attempt_id: str
+
+
+class AssessAttemptResponse(BaseModel):
+    assessment: AssessmentResult
+    already_assessed: bool
+```
+
+### 4.4 Data Models
 
 ```python
 from dataclasses import dataclass, field
@@ -147,10 +221,28 @@ class LessonPlan:
 
 
 @dataclass
+class LessonAssignment:
+    assignment_id: str
+    learner_id: str
+    lesson_id: str
+    concept_id: str
+    difficulty: str
+    variant_id: str
+    status: Literal["active", "attempted", "assessed", "abandoned"]
+    selection_rationale: str
+    next_action_source: str | None
+    curriculum_version: str
+    created_at: datetime
+    updated_at: datetime
+
+
+@dataclass
 class AttemptSubmission:
     attempt_id: str
     learner_id: str
+    assignment_id: str
     lesson_id: str
+    client_request_id: str | None
     code: str
     file_paths: list[str]
     compiler_output: str | None
@@ -158,6 +250,7 @@ class AttemptSubmission:
     test_output: str | None
     learner_notes: str | None
     agent_notes: str | None
+    learner_execution_missing: bool
     submitted_at: datetime
 
 
@@ -165,14 +258,39 @@ class AttemptSubmission:
 class AssessmentResult:
     assessment_id: str
     attempt_id: str
+    assignment_id: str
+    scoring_version: str
     rubric_scores: dict[str, SkillScore]
     next_action: NextAction
     feedback_summary: str
     confidence: float
     created_at: datetime
+
+
+@dataclass
+class ProgressEvent:
+    event_id: str
+    learner_id: str
+    event_type: Literal[
+        "assignment_created",
+        "assignment_viewed",
+        "attempt_submitted",
+        "assessed",
+        "completed",
+        "repeated",
+        "simplified",
+        "accelerated",
+        "branched",
+        "reopened",
+        "abandoned",
+    ]
+    assignment_id: str | None
+    attempt_id: str | None
+    assessment_id: str | None
+    created_at: datetime
 ```
 
-### 4.4 Repository Interfaces
+### 4.5 Repository Interfaces
 
 ```python
 from typing import Protocol
@@ -183,14 +301,25 @@ class LearnerRepository(Protocol):
     def save_profile(self, profile: LearnerProfile) -> None: ...
 
 
+class AssignmentRepository(Protocol):
+    def save_assignment(self, assignment: LessonAssignment) -> None: ...
+    def get_assignment(self, assignment_id: str) -> LessonAssignment | None: ...
+    def get_active_assignment(self, learner_id: str) -> LessonAssignment | None: ...
+    def update_assignment(self, assignment: LessonAssignment) -> None: ...
+
+
 class AttemptRepository(Protocol):
     def save_attempt(self, attempt: AttemptSubmission) -> None: ...
+    def get_attempt_by_client_request_id(
+        self, learner_id: str, client_request_id: str
+    ) -> AttemptSubmission | None: ...
     def get_attempt(self, attempt_id: str) -> AttemptSubmission | None: ...
     def list_recent_attempts(self, learner_id: str, limit: int) -> list[AttemptSubmission]: ...
 
 
 class AssessmentRepository(Protocol):
     def save_assessment(self, result: AssessmentResult) -> None: ...
+    def get_assessment_by_attempt_id(self, attempt_id: str) -> AssessmentResult | None: ...
     def list_recent_assessments(self, learner_id: str, limit: int) -> list[AssessmentResult]: ...
 
 
@@ -199,11 +328,12 @@ class CurriculumRepository(Protocol):
     def list_concepts(self) -> list[ConceptSpec]: ...
 ```
 
-### 4.5 JSON State Shape
+### 4.6 JSON State Shape
 
 ```json
 {
   "schema_version": 1,
+  "state_revision": 1,
   "active_learner_id": "local-default",
   "learners": {
     "local-default": {
@@ -218,13 +348,36 @@ class CurriculumRepository(Protocol):
       "updated_at": "2026-05-10T00:00:00Z"
     }
   },
+  "lesson_assignments": [],
   "attempts": [],
   "assessments": [],
+  "progress_events": [],
   "signals": []
 }
 ```
 
-### 4.6 FastMCP Server Skeleton
+JSON repository rules:
+
+- Lock the state file before load-mutate-write operations.
+- Reload state after acquiring the lock.
+- Increment `state_revision` for every successful mutation.
+- Write to a temporary file, flush it, and atomically replace the prior state file.
+- Return a conflict error if a mutation expects a revision that no longer matches.
+
+### 4.7 Session, Assignment, And Assessment Semantics
+
+- `start_session` with no profile and no placement returns `placement_required: true`.
+- `start_session` creates the learner profile only after a valid placement is provided.
+- `get_next_lesson` returns an active unattempted assignment if one exists.
+- `get_next_lesson` creates a new assignment only when no active assignment exists, the prior assignment was assessed or abandoned, or `force_new_variant` is true.
+- Returning an existing assignment records `assignment_viewed`, not `assignment_created`.
+- Creating a new assignment records `assignment_created`.
+- `submit_attempt` does not accept `attempt_id`; the server generates it.
+- `submit_attempt` may accept `client_request_id` for retry-safe submission.
+- `assess_attempt` returns an existing assessment when the attempt was already assessed.
+- Canonical assessment is produced by Rust Sensei scoring logic. Agent notes are persisted as evidence or diagnostic context.
+
+### 4.8 FastMCP Server Skeleton
 
 ```python
 from mcp.server.fastmcp import FastMCP
@@ -241,27 +394,31 @@ assessment_service = AssessmentService(...)
 
 
 @mcp.tool()
-def start_session(initial_rust_level: str | None = None) -> dict:
+def start_session(payload: dict) -> dict:
     """Create or resume the active Rust Sensei learner session."""
-    return session_service.start_session(initial_rust_level)
+    request = StartSessionRequest.model_validate(payload)
+    return session_service.start_session(request).model_dump()
 
 
 @mcp.tool()
-def get_next_lesson(learner_id: str = "local-default") -> dict:
+def get_next_lesson(payload: dict) -> dict:
     """Return the next adaptive Rust lesson for the learner."""
-    return lesson_service.get_next_lesson(learner_id)
+    request = GetNextLessonRequest.model_validate(payload)
+    return lesson_service.get_next_lesson(request).model_dump()
 
 
 @mcp.tool()
 def submit_attempt(payload: dict) -> dict:
     """Persist a learner attempt for later assessment."""
-    return assessment_service.submit_attempt(payload)
+    request = SubmitAttemptRequest.model_validate(payload)
+    return assessment_service.submit_attempt(request).model_dump()
 
 
 @mcp.tool()
-def assess_attempt(attempt_id: str) -> dict:
+def assess_attempt(payload: dict) -> dict:
     """Assess an attempt and update learner state."""
-    return assessment_service.assess_attempt(attempt_id)
+    request = AssessAttemptRequest.model_validate(payload)
+    return assessment_service.assess_attempt(request).model_dump()
 
 
 if __name__ == "__main__":
@@ -282,7 +439,7 @@ flowchart LR
     Session --> Repos["7. Repository Interfaces"]
     Lesson --> Repos
     Assess --> Repos
-    Setup --> Repos
+    Setup --> Env["10. Environment Adapters"]
     Repos --> Json["8. JSON Storage Adapter"]
     Lesson --> Curriculum["9. Curriculum Seed"]
 ```
@@ -298,19 +455,21 @@ Diagram description:
 7. Repository Interfaces: Stable persistence contracts.
 8. JSON Storage Adapter: v1 local storage implementation.
 9. Curriculum Seed: Structured starter concept graph.
+10. Environment Adapters: Filesystem, command discovery, Python version, and Cargo availability checks.
 
 ## 6. User Perspective Flow
 
 1. The learner asks Codex to start Rust Sensei.
 2. Codex calls `start_session`.
-3. If no profile exists, Rust Sensei asks for the initial Rust level.
-4. Codex calls `get_next_lesson`.
-5. Rust Sensei returns a lesson plan and rubric.
-6. The learner completes the lesson in VS Code.
-7. Codex calls `submit_attempt` with code and command output.
-8. Codex calls `assess_attempt`.
-9. Rust Sensei stores the assessment and updates learner state.
-10. Codex presents feedback and the next step.
+3. If no profile exists, Rust Sensei returns `placement_required: true`.
+4. Codex asks the learner exactly 1 placement question and calls `start_session` with the selected value.
+5. Codex calls `get_next_lesson`.
+6. Rust Sensei returns an active assignment or creates a new lesson assignment.
+7. The learner completes the lesson in VS Code.
+8. Codex calls `submit_attempt` with assignment id, code, and command output.
+9. Codex calls `assess_attempt`.
+10. Rust Sensei returns the existing assessment for duplicate requests or creates one assessment for the attempt.
+11. Codex presents feedback and the next step.
 
 ## 7. Failure Scenarios
 
@@ -343,6 +502,18 @@ Diagram description:
 - Trigger: Client exits during a tool call.
 - Expected behavior: Complete no partial state write unless the write already succeeded atomically.
 - Requirement link: `NFR-09`.
+
+### 7.6 Duplicate Lesson Request
+
+- Trigger: Client calls `get_next_lesson` multiple times before submitting an attempt.
+- Expected behavior: Return the active assignment and record `assignment_viewed`.
+- Requirement link: `MS-FR-16`.
+
+### 7.7 Duplicate Assessment Request
+
+- Trigger: Client retries `assess_attempt` for an already assessed attempt.
+- Expected behavior: Return the existing assessment and do not update skill scores again.
+- Requirement link: `MS-FR-17`.
 
 ## Appendix A. Future Changes
 

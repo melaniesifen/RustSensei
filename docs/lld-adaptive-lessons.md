@@ -27,6 +27,8 @@ Primary requirement links:
 - `AL-FR-08`: A learner who starts as `proficient` or `expert` must skip beginner concepts unless later evidence requires remediation.
 - `AL-FR-09`: Demonstrated mastery may mark a concept complete without assigning all practice variants.
 - `AL-FR-10`: The system must record why a lesson was selected.
+- `AL-FR-11`: The system must persist assignment history and use it during adaptation.
+- `AL-FR-12`: Placement skips must be represented as provisional skips, not completed concepts.
 
 ## 3. Non-Functional Requirements
 
@@ -70,13 +72,17 @@ class ConceptSpec:
     struggle_signals: list[str]
     rubric_ids: list[str]
     next_concepts: list[str]
+    branch_targets: dict[str, list[str]]
+    completion_thresholds: dict[str, float]
 
 
 @dataclass
 class LessonSelection:
+    assignment_id: str
     lesson_id: str
     concept_id: str
     difficulty: Difficulty
+    variant_id: str
     next_action_reason: str
     skipped_concepts: list[str]
     prompt_inputs: dict[str, str]
@@ -117,7 +123,16 @@ class LessonSelection:
     "readability",
     "compiler_error_handling"
   ],
-  "next_concepts": ["mutability_shadowing"]
+  "next_concepts": ["mutability_shadowing"],
+  "branch_targets": {
+    "compiler_feedback_remediation": ["compiler_errors_basic"],
+    "problem_solving_enrichment": ["variables_small_problem"]
+  },
+  "completion_thresholds": {
+    "rust_correctness": 0.70,
+    "rust_idioms": 0.60,
+    "readability": 0.60
+  }
 }
 ```
 
@@ -131,34 +146,27 @@ class LessonSelection:
 | `challenge` | Learner exceeds baseline | Add formatting, mutation, and a small calculation |
 | `advanced` | Learner shows strong transfer | Model typed data and explain tradeoffs |
 
-### 4.4 Selection Policy Registry
+### 4.4 Selection Handler Registry
 
-Lesson selection must use a policy registry instead of a central conditional chain. This keeps next-action behavior extensible. Adding a new action should require adding 1 policy class and registering it, not editing every selection call site.
+Lesson selection must use a handler registry instead of a central conditional chain. This keeps next-action behavior extensible without requiring class-per-action complexity in v1. Adding a new action should require adding 1 handler function and registering it, not editing every selection call site.
 
 ```python
-from typing import Protocol
+from collections.abc import Callable
 
 
-class LessonSelectionPolicy(Protocol):
-    action: str
-
-    def select(self, context: "LessonSelectionContext") -> LessonPlan:
-        ...
+LessonHandler = Callable[["LessonSelectionContext"], LessonPlan]
 
 
-class SimplifyPolicy:
-    action = "simplify"
-
-    def select(self, context: "LessonSelectionContext") -> LessonPlan:
-        return context.lesson_factory.build_lesson(
-            concept_id=context.last_assessment.concept_id,
-            difficulty=context.difficulty_scale.lower(context.last_assessment.difficulty),
-        )
+def select_simplified_lesson(context: "LessonSelectionContext") -> LessonPlan:
+    return context.lesson_factory.build_lesson(
+        concept_id=context.last_assignment.concept_id,
+        difficulty=context.difficulty_scale.lower(context.last_assignment.difficulty),
+    )
 
 
 class LessonSelector:
-    def __init__(self, policies: list[LessonSelectionPolicy], placement_policy):
-        self.policies = {policy.action: policy for policy in policies}
+    def __init__(self, handlers: dict[str, LessonHandler], placement_policy):
+        self.handlers = handlers
         self.placement_policy = placement_policy
 
     def select_next_lesson(self, context: "LessonSelectionContext") -> LessonPlan:
@@ -166,19 +174,18 @@ class LessonSelector:
             return self.placement_policy.select(context)
 
         action = context.last_assessment.next_action
-        policy = self.policies[action]
-        return policy.select(context)
+        return self.handlers[action](context)
 ```
 
-Required v1 policies:
+Required v1 handlers:
 
-| Action | Policy class | Selection behavior |
+| Action | Handler | Selection behavior |
 | --- | --- | --- |
-| `simplify` | `SimplifyPolicy` | Same concept, lower difficulty |
-| `repeat` | `RepeatPolicy` | Same concept, same difficulty, new variant |
-| `continue` | `ContinuePolicy` | Next concept, standard difficulty |
-| `accelerate` | `AcceleratePolicy` | Next unmastered concept, challenge difficulty |
-| `branch` | `BranchPolicy` | Branch lesson selected from assessment evidence |
+| `simplify` | `select_simplified_lesson` | Same concept, lower difficulty |
+| `repeat` | `select_repeat_variant` | Same concept, same difficulty, new variant |
+| `continue` | `select_next_concept` | Next concept, standard difficulty |
+| `accelerate` | `select_accelerated_concept` | Next unmastered concept, challenge difficulty |
+| `branch` | `select_branch_lesson` | Branch target selected from assessment evidence |
 
 The `LessonSelector` should be the only service that resolves `next_action` to behavior.
 
@@ -191,6 +198,13 @@ The `LessonSelector` should be the only service that resolves `next_action` to b
 | `intermediate` | `ownership_borrowing_intro` | `standard` |
 | `proficient` | `traits_generics_testing` | `challenge` |
 | `expert` | `advanced_design_review` | `advanced` |
+
+Placement skip behavior:
+
+- Concepts before the starting concept are marked `provisionally_skipped`.
+- Provisionally skipped concepts are not treated as completed.
+- Later assessment evidence may confirm the skip or reopen the concept.
+- Reopening a skipped concept creates a `reopened` progress event.
 
 ### 4.6 Next-Step Rule Set
 
@@ -223,6 +237,25 @@ NEXT_STEP_RULES = [
         reason="Rust concept score is below 0.50.",
     ),
     NextStepRule(
+        rule_id="compiler_feedback_branch",
+        action="branch",
+        predicate=lambda a: (
+            a.compiler_error_handling_score < 0.50
+            and a.recent_compile_failures >= 2
+        ),
+        reason="Repeated compiler-error struggles require targeted remediation.",
+    ),
+    NextStepRule(
+        rule_id="problem_solving_branch",
+        action="branch",
+        predicate=lambda a: (
+            a.rust_score >= 0.70
+            and a.problem_solving_score < 0.55
+            and a.confidence >= 0.60
+        ),
+        reason="Rust syntax is progressing faster than problem-solving skill.",
+    ),
+    NextStepRule(
         rule_id="strong_performance_accelerate",
         action="accelerate",
         predicate=lambda a: (
@@ -251,29 +284,70 @@ def choose_next_action(assessment: "AssessmentSummary") -> tuple[str, str]:
 
 Thresholds are v1 defaults. They should be tuned after at least 20 assessed attempts from real usage.
 
+### 4.7 Mastery And Completion Rules
+
+Concept completion is based on rubric scores and confidence.
+
+Default v1 completion rules:
+
+- A standard concept is complete when all required rubric dimensions meet the concept threshold and each required dimension has confidence at least `0.60`.
+- A challenge-level attempt can complete the concept when Rust correctness is at least `0.85`, general programming score is at least `0.80`, and overall confidence is at least `0.70`.
+- A completed concept can be reopened if later evidence shows a required rubric dimension below `0.50` with confidence at least `0.60`.
+- Reopened concepts return through the normal selection handler registry.
+
+Completion emits a `completed` progress event. Reopening emits a `reopened` progress event.
+
+### 4.8 Assignment History And Prompt Variants
+
+Lesson selection uses persisted assignment history.
+
+- `get_next_lesson` creates a `LessonAssignment` when a new instructional decision is made.
+- Reopening the current active assignment records `assignment_viewed`, not `assignment_created`.
+- Repeat detection and prompt-variation logic use `assignment_created` events only.
+- Each assignment includes `assignment_id`, `lesson_id`, `concept_id`, `difficulty`, `variant_id`, `selection_rationale`, and `curriculum_version`.
+- Variant selection must be deterministic from stable inputs such as learner id, concept id, difficulty, curriculum version, and repeat count.
+- The same `variant_id` should not be assigned more than 2 times in a row for the same concept and difficulty.
+
+### 4.9 Curriculum Validation
+
+Curriculum validation runs at server startup.
+
+Required checks:
+
+- All concept ids are unique.
+- All prerequisite ids exist.
+- All next concept ids exist.
+- All branch target ids exist.
+- All rubric ids exist.
+- The default path has no unintended cycles.
+- Every non-terminal concept has at least 1 reachable next concept or branch target.
+- Lesson ids and variant ids are stable within a curriculum version.
+
 ## 5. LLD Diagram
 
 ```mermaid
 flowchart TD
-    Profile["1. Learner Profile"] --> Selector["4. Lesson Selector"]
-    Progress["2. Progress History"] --> Selector
-    Assessments["3. Recent Assessments"] --> Selector
-    Curriculum["5. Concept Graph"] --> Selector
-    Selector --> Difficulty["6. Difficulty Band"]
-    Selector --> Prompt["7. Lesson Prompt"]
-    Selector --> Rationale["8. Selection Rationale"]
+    Profile["1. Learner Profile"] --> Selector["5. Lesson Selector"]
+    Progress["2. Progress Events"] --> Selector
+    Assignments["3. Assignment History"] --> Selector
+    Assessments["4. Recent Assessments"] --> Selector
+    Curriculum["6. Concept Graph"] --> Selector
+    Selector --> Difficulty["7. Difficulty Band"]
+    Selector --> Variant["8. Prompt Variant"]
+    Selector --> Rationale["9. Selection Rationale"]
 ```
 
 Diagram description:
 
 1. Learner Profile: Initial placement and current skill model.
-2. Progress History: Completed, repeated, skipped, and active concepts.
-3. Recent Assessments: Latest rubric scores and next actions.
-4. Lesson Selector: Service that chooses the next concept and difficulty.
-5. Concept Graph: Structured curriculum data.
-6. Difficulty Band: Intro, guided, standard, challenge, or advanced.
-7. Lesson Prompt: Assignment content returned to the agent.
-8. Selection Rationale: Explanation of why the lesson was selected.
+2. Progress Events: Append-only history of instructional state changes.
+3. Assignment History: Created and viewed lesson assignments.
+4. Recent Assessments: Latest rubric scores and next actions.
+5. Lesson Selector: Service that chooses the next concept and difficulty.
+6. Concept Graph: Structured curriculum data.
+7. Difficulty Band: Intro, guided, standard, challenge, or advanced.
+8. Prompt Variant: Deterministic lesson variant selected for this assignment.
+9. Selection Rationale: Explanation of why the lesson was selected.
 
 ## 6. User Perspective Flow
 
