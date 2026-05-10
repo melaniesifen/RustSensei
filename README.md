@@ -16,7 +16,25 @@ The learner writes Rust code in VS Code. Codex operates in the same workspace, c
 
 ## Current Status
 
-This repository currently contains design documentation only. No implementation code has been created yet.
+This repository contains design documentation and the first Python implementation slice:
+
+- Package metadata and CLI entrypoint.
+- Typed DTO and domain models for session and setup flows.
+- JSON learner profile repository with atomic state writes.
+- Session service for placement and active profile retrieval.
+- Setup service for Python, Cargo, and state directory diagnostics.
+- Daily append-only file logging under the configured state directory.
+- Initial tests for session, setup, and JSON state behavior.
+
+## Verification
+
+After Python 3.11+ and dependencies are installed:
+
+```bash
+python -m pytest --cov=rust_sensei --cov-report=term-missing
+```
+
+Coverage should stay above `85%`.
 
 ## Documents
 
@@ -55,9 +73,9 @@ flowchart LR
 
 ## Future Work
 
-- Implement the Python MCP server.
+- Complete the Python MCP server tool surface.
 - Add a `doctor` command for local setup checks.
-- Add JSON repository implementation.
+- Add lesson assignment, attempt, assessment, and progress repositories.
 - Add adaptive curriculum seed data.
 - Add Codex setup instructions.
 - Add Claude Code setup instructions.
