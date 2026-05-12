@@ -10,6 +10,7 @@ from rust_sensei.constants import ACTIVE_LEARNER_ID
 from rust_sensei.domain.attempt import AttemptSubmission
 from rust_sensei.domain.enums import AssignmentStatus
 from rust_sensei.domain.scoring import build_assessment
+from rust_sensei.domain.skill_update import update_skill_model
 from rust_sensei.dto.assessment import AssessAttemptRequest, AssessAttemptResponse
 from rust_sensei.dto.attempt import (
     CommandRunMetadataDTO,
@@ -30,6 +31,7 @@ from rust_sensei.repositories.interfaces import (
     AssignmentRepository,
     AttemptRepository,
     CurriculumRepository,
+    LearnerRepository,
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -42,12 +44,14 @@ class AssessmentService:
         attempt_repository: AttemptRepository,
         assessment_repository: AssessmentRepository,
         curriculum_repository: CurriculumRepository,
+        learner_repository: LearnerRepository,
         now: Callable[[], datetime],
     ) -> None:
         self._assignment_repository = assignment_repository
         self._attempt_repository = attempt_repository
         self._assessment_repository = assessment_repository
         self._curriculum_repository = curriculum_repository
+        self._learner_repository = learner_repository
         self._now = now
 
     def submit_attempt(self, request: SubmitAttemptRequest) -> SubmitAttemptResponse:
@@ -148,6 +152,12 @@ class AssessmentService:
                 "Curriculum concept was not found",
                 concept_id=assignment.concept_id,
             )
+        profile = self._learner_repository.get_profile(attempt.learner_id)
+        if profile is None:
+            raise not_found_error(
+                "Learner profile was not found",
+                learner_id=attempt.learner_id,
+            )
 
         now = self._now()
         candidate = build_assessment(
@@ -161,9 +171,20 @@ class AssessmentService:
             status=AssignmentStatus.ASSESSED,
             updated_at=now,
         )
-        saved, created = self._assessment_repository.save_assessment_for_assignment(
-            candidate,
-            updated_assignment,
+        saved, created = (
+            self._assessment_repository.save_assessment_for_assignment_and_profile(
+                candidate,
+                updated_assignment,
+                lambda saved_assessment, current_profile: replace(
+                    current_profile,
+                    skill_model=update_skill_model(
+                        model=current_profile.skill_model,
+                        assessment=saved_assessment,
+                        concept_id=assignment.concept_id,
+                    ),
+                    updated_at=now,
+                ),
+            )
         )
         if created:
             LOGGER.info(
