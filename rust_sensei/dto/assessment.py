@@ -4,6 +4,7 @@ from typing import Literal
 
 from pydantic import Field
 
+from rust_sensei.domain.enums import NextAction
 from rust_sensei.dto.common import StrictDTO
 from rust_sensei.dto.session import SkillScoreDTO
 
@@ -35,7 +36,7 @@ class AssessmentResultDTO(StrictDTO):
     confidence_breakdown: ConfidenceBreakdownDTO
     missing_evidence: list[str] = Field(default_factory=list)
     feedback_items: list[FeedbackItemDTO] = Field(default_factory=list)
-    next_action: Literal["simplify", "repeat", "continue", "accelerate", "branch"]
+    next_action: NextAction
     branch_id: str | None = None
     next_action_reason: str
     feedback_summary: str

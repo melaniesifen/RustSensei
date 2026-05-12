@@ -12,10 +12,37 @@ from rust_sensei.domain.assessment import (
 )
 from rust_sensei.domain.attempt import AttemptSubmission
 from rust_sensei.domain.curriculum import VALID_RUBRIC_IDS, Concept
+from rust_sensei.domain.enums import Difficulty, NextAction
 from rust_sensei.domain.skill import SkillScore
 from rust_sensei.errors import validation_error
 
 SCORING_VERSION = "deterministic-rubric-v1"
+INSUFFICIENT_EVIDENCE_CONFIDENCE_THRESHOLD = 0.45
+SIMPLIFY_RUST_SCORE_THRESHOLD = 0.50
+CONTINUE_RUST_SCORE_THRESHOLD = 0.70
+CONTINUE_CONFIDENCE_THRESHOLD = 0.60
+ACCELERATE_RUST_SCORE_THRESHOLD = 0.85
+ACCELERATE_PROGRAMMING_SCORE_THRESHOLD = 0.80
+ACCELERATE_CONFIDENCE_THRESHOLD = 0.80
+ADVANCED_FAILURE_SCORE_THRESHOLD = 0.50
+ADVANCED_SUCCESS_SCORE_THRESHOLD = 0.80
+
+NO_DETERMINISTIC_SCORER_SCORE = 0.50
+FAILURE_SIGNAL_SCORE = 0.35
+SUCCESS_SIGNAL_SCORE = 0.85
+CODE_WITHOUT_EXECUTION_SCORE = 0.65
+NO_CODE_SCORE = 0.30
+MISSING_COMPILER_OUTPUT_SCORE = 0.40
+FAILURE_WITH_LEARNER_NOTES_SCORE = 0.45
+SHORT_CODE_SCORE = 0.45
+BASE_CODE_QUALITY_SCORE = 0.72
+BASE_PROBLEM_SOLVING_SCORE = 0.60
+FUNCTION_BOUNDARY_BONUS = 0.05
+BLUNT_IDIOM_PENALTY = 0.10
+MAINTAINABILITY_FUNCTION_BONUS = 0.05
+LEARNER_NOTES_BONUS = 0.10
+TEST_OUTPUT_BONUS = 0.15
+DSA_MARKER_BONUS = 0.05
 
 RUBRIC_EVIDENCE_WEIGHTS = {
     "rust_correctness": {
@@ -64,11 +91,11 @@ CODE_DEPENDENT_RUBRICS = {
     "maintainability",
 }
 DIFFICULTY_WEIGHTS = {
-    "intro": 0.70,
-    "guided": 0.80,
-    "standard": 0.90,
-    "challenge": 1.00,
-    "advanced": 1.00,
+    Difficulty.INTRO: 0.70,
+    Difficulty.GUIDED: 0.80,
+    Difficulty.STANDARD: 0.90,
+    Difficulty.CHALLENGE: 1.00,
+    Difficulty.ADVANCED: 1.00,
 }
 
 
@@ -91,7 +118,11 @@ def build_assessment(
         observed_score,
     )
     confidence = confidence_breakdown.overall
-    assessment_status = "insufficient_evidence" if confidence < 0.45 else "assessed"
+    assessment_status = (
+        "insufficient_evidence"
+        if confidence < INSUFFICIENT_EVIDENCE_CONFIDENCE_THRESHOLD
+        else "assessed"
+    )
     rust_score = _mean_scores(
         rubric_scores,
         [
@@ -170,7 +201,10 @@ def _score_rubric(attempt: AttemptSubmission, rubric_id: str) -> SkillScore:
     elif rubric_id in {"problem_solving", "dsa"}:
         score, evidence = _score_problem_solving(attempt, rubric_id)
     else:
-        score, evidence = 0.50, ["No deterministic scorer is available for this rubric."]
+        score, evidence = (
+            NO_DETERMINISTIC_SCORER_SCORE,
+            ["No deterministic scorer is available for this rubric."],
+        )
 
     return SkillScore(
         score=round(score, 2),
@@ -181,12 +215,14 @@ def _score_rubric(attempt: AttemptSubmission, rubric_id: str) -> SkillScore:
 
 def _score_rust_correctness(attempt: AttemptSubmission) -> tuple[float, list[str]]:
     if _has_failure_signal(attempt):
-        return 0.35, ["Compiler or test output indicates a failure."]
+        return FAILURE_SIGNAL_SCORE, ["Compiler or test output indicates a failure."]
     if _has_success_signal(attempt):
-        return 0.85, ["Submitted execution evidence indicates success."]
+        return SUCCESS_SIGNAL_SCORE, ["Submitted execution evidence indicates success."]
     if attempt.code:
-        return 0.65, ["Code was submitted without clear execution success evidence."]
-    return 0.30, ["No code was submitted for correctness review."]
+        return CODE_WITHOUT_EXECUTION_SCORE, [
+            "Code was submitted without clear execution success evidence."
+        ]
+    return NO_CODE_SCORE, ["No code was submitted for correctness review."]
 
 
 def _score_compiler_error_handling(
@@ -194,13 +230,19 @@ def _score_compiler_error_handling(
 ) -> tuple[float, list[str]]:
     if not attempt.compiler_output:
         if _has_success_signal(attempt):
-            return 0.65, ["Command metadata or test output indicates execution completed."]
-        return 0.40, ["Compiler output was not submitted."]
+            return CODE_WITHOUT_EXECUTION_SCORE, [
+                "Command metadata or test output indicates execution completed."
+            ]
+        return MISSING_COMPILER_OUTPUT_SCORE, ["Compiler output was not submitted."]
     if _text_has_failure(attempt.compiler_output):
         if attempt.learner_notes:
-            return 0.45, ["Compiler output shows errors and learner notes add context."]
-        return 0.35, ["Compiler output shows errors without learner explanation."]
-    return 0.85, ["Compiler output does not show compiler errors."]
+            return FAILURE_WITH_LEARNER_NOTES_SCORE, [
+                "Compiler output shows errors and learner notes add context."
+            ]
+        return FAILURE_SIGNAL_SCORE, [
+            "Compiler output shows errors without learner explanation."
+        ]
+    return SUCCESS_SIGNAL_SCORE, ["Compiler output does not show compiler errors."]
 
 
 def _score_code_quality(
@@ -208,21 +250,23 @@ def _score_code_quality(
     rubric_id: str,
 ) -> tuple[float, list[str]]:
     if not attempt.code:
-        return 0.30, ["No code was submitted for code-quality review."]
+        return NO_CODE_SCORE, ["No code was submitted for code-quality review."]
     stripped = attempt.code.strip()
     if len(stripped) < 20:
-        return 0.45, ["Submitted code is too small for a strong quality judgment."]
+        return SHORT_CODE_SCORE, [
+            "Submitted code is too small for a strong quality judgment."
+        ]
 
-    score = 0.72
+    score = BASE_CODE_QUALITY_SCORE
     evidence = ["Submitted code is large enough for deterministic review."]
     if "fn " in stripped:
-        score += 0.05
+        score += FUNCTION_BOUNDARY_BONUS
         evidence.append("Code includes a Rust function boundary.")
     if rubric_id == "rust_idioms" and ("unwrap()" in stripped or "clone()" in stripped):
-        score -= 0.10
+        score -= BLUNT_IDIOM_PENALTY
         evidence.append("Potentially blunt Rust idiom usage was detected.")
     if rubric_id == "maintainability" and stripped.count("fn ") >= 2:
-        score += 0.05
+        score += MAINTAINABILITY_FUNCTION_BONUS
         evidence.append("Code uses more than one function boundary.")
     return _clamp(score), evidence
 
@@ -232,21 +276,21 @@ def _score_problem_solving(
     rubric_id: str,
 ) -> tuple[float, list[str]]:
     if not attempt.code:
-        return 0.35, ["No code was submitted for solution review."]
+        return FAILURE_SIGNAL_SCORE, ["No code was submitted for solution review."]
 
-    score = 0.60
+    score = BASE_PROBLEM_SOLVING_SCORE
     evidence = ["Code was submitted for solution review."]
     if attempt.learner_notes:
-        score += 0.10
+        score += LEARNER_NOTES_BONUS
         evidence.append("Learner notes explain the approach.")
     if attempt.test_output and not _text_has_failure(attempt.test_output):
-        score += 0.15
+        score += TEST_OUTPUT_BONUS
         evidence.append("Test output supports the submitted solution.")
     if rubric_id == "dsa" and any(
         marker in attempt.code.lower()
         for marker in ["vec", "hashmap", "btreemap", "iter", "sort"]
     ):
-        score += 0.05
+        score += DSA_MARKER_BONUS
         evidence.append("Code includes a recognizable data-structure or iteration marker.")
     return _clamp(score), evidence
 
@@ -350,12 +394,26 @@ def _apply_rubric_evidence_cap(
 
 
 def _task_difficulty_weight(difficulty: str, observed_score: float) -> float:
-    base = DIFFICULTY_WEIGHTS.get(difficulty, 0.90)
-    if difficulty in {"challenge", "advanced"} and observed_score < 0.50:
+    difficulty_value = _difficulty_or_default(difficulty)
+    base = DIFFICULTY_WEIGHTS.get(difficulty_value, 0.90)
+    if (
+        difficulty_value in {Difficulty.CHALLENGE, Difficulty.ADVANCED}
+        and observed_score < ADVANCED_FAILURE_SCORE_THRESHOLD
+    ):
         return 0.75
-    if difficulty in {"challenge", "advanced"} and observed_score >= 0.80:
+    if (
+        difficulty_value in {Difficulty.CHALLENGE, Difficulty.ADVANCED}
+        and observed_score >= ADVANCED_SUCCESS_SCORE_THRESHOLD
+    ):
         return 1.00
     return base
+
+
+def _difficulty_or_default(difficulty: str) -> Difficulty:
+    try:
+        return Difficulty(difficulty)
+    except ValueError:
+        return Difficulty.STANDARD
 
 
 def _overall_confidence(
@@ -403,23 +461,28 @@ def _choose_next_action(
     rust_score: float,
     general_programming_score: float,
     confidence: float,
-) -> tuple[str, str]:
-    if confidence < 0.45:
-        return "repeat", "Assessment confidence is below 0.45."
-    if rust_score < 0.50:
-        return "simplify", "Rust concept score is below 0.50."
+) -> tuple[NextAction, str]:
+    if confidence < INSUFFICIENT_EVIDENCE_CONFIDENCE_THRESHOLD:
+        return NextAction.REPEAT, "Assessment confidence is below 0.45."
+    if rust_score < SIMPLIFY_RUST_SCORE_THRESHOLD:
+        return NextAction.SIMPLIFY, "Rust concept score is below 0.50."
     if (
-        rust_score >= 0.85
-        and general_programming_score >= 0.80
-        and confidence >= 0.80
+        rust_score >= ACCELERATE_RUST_SCORE_THRESHOLD
+        and general_programming_score >= ACCELERATE_PROGRAMMING_SCORE_THRESHOLD
+        and confidence >= ACCELERATE_CONFIDENCE_THRESHOLD
     ):
-        return "accelerate", (
+        return NextAction.ACCELERATE, (
             "Rust, general programming, and confidence scores meet "
             "acceleration thresholds."
         )
-    if rust_score >= 0.70 and confidence >= 0.60:
-        return "continue", "Rust score and confidence meet continuation thresholds."
-    return "repeat", "No higher-priority rule matched."
+    if (
+        rust_score >= CONTINUE_RUST_SCORE_THRESHOLD
+        and confidence >= CONTINUE_CONFIDENCE_THRESHOLD
+    ):
+        return NextAction.CONTINUE, (
+            "Rust score and confidence meet continuation thresholds."
+        )
+    return NextAction.REPEAT, "No higher-priority rule matched."
 
 
 def _feedback_items(

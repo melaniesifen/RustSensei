@@ -4,10 +4,10 @@ from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Literal
 
+from rust_sensei.domain.enums import NextAction
 from rust_sensei.domain.skill import SkillScore
 
 AssessmentStatus = Literal["assessed", "insufficient_evidence"]
-NextAction = Literal["simplify", "repeat", "continue", "accelerate", "branch"]
 
 
 @dataclass(frozen=True)

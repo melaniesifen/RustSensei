@@ -20,3 +20,19 @@ class AssignmentStatus(str, Enum):
     ATTEMPTED = "attempted"
     ASSESSED = "assessed"
     ABANDONED = "abandoned"
+
+
+class Difficulty(str, Enum):
+    INTRO = "intro"
+    GUIDED = "guided"
+    STANDARD = "standard"
+    CHALLENGE = "challenge"
+    ADVANCED = "advanced"
+
+
+class NextAction(str, Enum):
+    SIMPLIFY = "simplify"
+    REPEAT = "repeat"
+    CONTINUE = "continue"
+    ACCELERATE = "accelerate"
+    BRANCH = "branch"
