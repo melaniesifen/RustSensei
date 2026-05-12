@@ -4,7 +4,7 @@ from dataclasses import replace
 import pytest
 
 from rust_sensei.domain.assessment import AssessmentResult, ConfidenceBreakdown
-from rust_sensei.domain.enums import RustLevel
+from rust_sensei.domain.enums import Difficulty, NextAction, RustLevel
 from rust_sensei.domain.learner import LearnerProfile
 from rust_sensei.domain.skill import SkillModel, SkillScore
 from rust_sensei.dto.session import StartSessionRequest
@@ -12,6 +12,13 @@ from rust_sensei.errors import IdempotencyConflictError, StorageError
 from rust_sensei.repositories.json_state import JsonStateStore
 from rust_sensei.repositories.json_repository import JsonRepositoryFactory
 from rust_sensei.services.session_service import SessionService
+from tests.constants import (
+    ASSIGNMENT_ID_1,
+    CARGO_HELLO_WORLD_CONCEPT_ID,
+    TEST_CURRICULUM_VERSION,
+    TEST_LEARNER_ID,
+    TEST_NOW,
+)
 
 
 def test_json_repository_creates_expected_state_shape(tmp_path):
@@ -443,6 +450,40 @@ def test_assessment_repository_profile_updater_uses_current_profile_inside_trans
     assert "existing" in saved_profile.skill_model.rust_concepts
 
 
+def test_repositories_return_latest_assessed_assignment_and_assessment(tmp_path):
+    from rust_sensei.domain.enums import AssignmentStatus
+
+    repositories = JsonRepositoryFactory(tmp_path)
+    first_assignment = _assignment(AssignmentStatus.ASSESSED)
+    second_assignment = replace(
+        _assignment(AssignmentStatus.ASSESSED),
+        assignment_id="assign_000002",
+        lesson_id="lesson_2",
+        concept_id="variables_primitive_types",
+    )
+    first_assessment = _assessment("attempt_1", first_assignment.assignment_id)
+    second_assessment = _assessment("attempt_2", second_assignment.assignment_id)
+
+    repositories.assessment_repository().save_assessment_for_assignment(
+        first_assessment,
+        first_assignment,
+    )
+    saved_second, _ = repositories.assessment_repository().save_assessment_for_assignment(
+        second_assessment,
+        second_assignment,
+    )
+
+    assert repositories.assignment_repository().get_latest_assessed_assignment(
+        TEST_LEARNER_ID
+    ) == second_assignment
+    assert repositories.assessment_repository().get_latest_assessment_for_assignment(
+        second_assignment.assignment_id
+    ) == saved_second
+    assert repositories.assessment_repository().get_latest_assessment_for_assignment(
+        "missing"
+    ) is None
+
+
 def test_curriculum_repository_rejects_invalid_curriculum(tmp_path):
     curriculum_path = tmp_path / "bad_curriculum.json"
     curriculum_path.write_text(
@@ -498,14 +539,12 @@ def test_curriculum_repository_rejects_invalid_curriculum(tmp_path):
 
 
 def _fixed_now():
-    from datetime import datetime, timezone
-
-    return datetime(2026, 5, 10, tzinfo=timezone.utc)
+    return TEST_NOW
 
 
 def _profile(level):
     return LearnerProfile(
-        learner_id="local-default",
+        learner_id=TEST_LEARNER_ID,
         rust_level_initial=level,
         active_concept_id=None,
         skill_model=SkillModel(),
@@ -518,15 +557,15 @@ def _assignment(status):
     from rust_sensei.domain.lesson import LessonAssignment
 
     return LessonAssignment(
-        assignment_id="assign_000001",
-        learner_id="local-default",
+        assignment_id=ASSIGNMENT_ID_1,
+        learner_id=TEST_LEARNER_ID,
         lesson_id="lesson_1",
-        concept_id="cargo_hello_world",
-        difficulty="intro",
+        concept_id=CARGO_HELLO_WORLD_CONCEPT_ID,
+        difficulty=Difficulty.INTRO,
         variant_id="intro_001",
         status=status,
         selection_rationale="test",
-        curriculum_version="0.1.0",
+        curriculum_version=TEST_CURRICULUM_VERSION,
         created_at=_fixed_now(),
         updated_at=_fixed_now(),
     )
@@ -554,7 +593,7 @@ def _assessment(attempt_id, assignment_id):
         ),
         missing_evidence=[],
         feedback_items=[],
-        next_action="continue",
+        next_action=NextAction.CONTINUE,
         branch_id=None,
         next_action_reason="test",
         feedback_summary="test",

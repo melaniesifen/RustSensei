@@ -1,19 +1,32 @@
-from datetime import datetime, timezone
-
 import pytest
 
 from rust_sensei.domain.enums import AssignmentStatus, RustLevel
 from rust_sensei.domain.lesson import LessonAssignment
+from rust_sensei.dto.assessment import AssessAttemptRequest
+from rust_sensei.dto.attempt import SubmitAttemptRequest
 from rust_sensei.dto.lesson import GetNextLessonRequest
 from rust_sensei.dto.session import StartSessionRequest
 from rust_sensei.errors import NotFoundError, ValidationError
 from rust_sensei.repositories.json_repository import JsonRepositoryFactory
+from rust_sensei.services.assessment_service import AssessmentService
 from rust_sensei.services.lesson_service import LessonService
 from rust_sensei.services.session_service import SessionService
+from tests.constants import (
+    ASSIGNMENT_ID_1,
+    ASSIGNMENT_ID_2,
+    CARGO_HELLO_WORLD_CONCEPT_ID,
+    HELLO_RUST_CODE,
+    HELLO_RUST_OUTPUT,
+    SUCCESSFUL_CARGO_OUTPUT,
+    TEST_CURRICULUM_VERSION,
+    TEST_LEARNER_ID,
+    TEST_NOW,
+    VARIABLES_CONCEPT_ID,
+)
 
 
 def test_get_next_lesson_creates_first_assignment_from_placement(tmp_path):
-    session_service, lesson_service = _services(tmp_path)
+    session_service, lesson_service, _ = _services(tmp_path)
     session_service.start_session(StartSessionRequest(initial_rust_level=RustLevel.NEW))
 
     response = lesson_service.get_next_lesson(GetNextLessonRequest())
@@ -21,9 +34,9 @@ def test_get_next_lesson_creates_first_assignment_from_placement(tmp_path):
     assert response.reused_active_assignment is False
     assert response.assignment is not None
     assert response.lesson_plan is not None
-    assert response.assignment.assignment_id == "assign_000001"
+    assert response.assignment.assignment_id == ASSIGNMENT_ID_1
     assert response.assignment.status == "active"
-    assert response.assignment.concept_id == "cargo_hello_world"
+    assert response.assignment.concept_id == CARGO_HELLO_WORLD_CONCEPT_ID
     assert response.lesson_plan.learner_command == "cargo run"
     assert response.lesson_plan.rubric_ids == [
         "rust_correctness",
@@ -32,7 +45,7 @@ def test_get_next_lesson_creates_first_assignment_from_placement(tmp_path):
 
 
 def test_get_next_lesson_reuses_active_assignment(tmp_path):
-    session_service, lesson_service = _services(tmp_path)
+    session_service, lesson_service, _ = _services(tmp_path)
     session_service.start_session(
         StartSessionRequest(initial_rust_level=RustLevel.BEGINNER)
     )
@@ -44,25 +57,25 @@ def test_get_next_lesson_reuses_active_assignment(tmp_path):
     assert second.assignment is not None
     assert second.reused_active_assignment is True
     assert second.assignment.assignment_id == first.assignment.assignment_id
-    assert second.assignment.concept_id == "variables_primitive_types"
+    assert second.assignment.concept_id == VARIABLES_CONCEPT_ID
 
 
 def test_get_next_lesson_requires_existing_profile(tmp_path):
-    _, lesson_service = _services(tmp_path)
+    _, lesson_service, _ = _services(tmp_path)
 
     with pytest.raises(NotFoundError):
         lesson_service.get_next_lesson(GetNextLessonRequest())
 
 
 def test_get_next_lesson_rejects_unsupported_learner_id(tmp_path):
-    _, lesson_service = _services(tmp_path)
+    _, lesson_service, _ = _services(tmp_path)
 
     with pytest.raises(ValidationError):
         lesson_service.get_next_lesson(GetNextLessonRequest(learner_id="other"))
 
 
 def test_get_next_lesson_rejects_unimplemented_variant_controls(tmp_path):
-    session_service, lesson_service = _services(tmp_path)
+    session_service, lesson_service, _ = _services(tmp_path)
     session_service.start_session(StartSessionRequest(initial_rust_level=RustLevel.NEW))
 
     with pytest.raises(ValidationError):
@@ -78,22 +91,22 @@ def test_get_next_lesson_rejects_unimplemented_variant_controls(tmp_path):
 
 
 def test_get_next_lesson_fails_when_assignment_variant_is_missing(tmp_path):
-    session_service, lesson_service = _services(tmp_path)
+    session_service, lesson_service, _ = _services(tmp_path)
     repositories = JsonRepositoryFactory(tmp_path)
     session_service.start_session(StartSessionRequest(initial_rust_level=RustLevel.NEW))
     repositories.assignment_repository().save_assignment(
         LessonAssignment(
             assignment_id="assign_bad_variant",
-            learner_id="local-default",
-            lesson_id="cargo_hello_world:missing_variant",
-            concept_id="cargo_hello_world",
+            learner_id=TEST_LEARNER_ID,
+            lesson_id=f"{CARGO_HELLO_WORLD_CONCEPT_ID}:missing_variant",
+            concept_id=CARGO_HELLO_WORLD_CONCEPT_ID,
             difficulty="intro",
             variant_id="missing_variant",
             status=AssignmentStatus.ACTIVE,
             selection_rationale="test corrupted assignment",
-            curriculum_version="0.1.0",
-            created_at=datetime(2026, 5, 10, tzinfo=timezone.utc),
-            updated_at=datetime(2026, 5, 10, tzinfo=timezone.utc),
+            curriculum_version=TEST_CURRICULUM_VERSION,
+            created_at=TEST_NOW,
+            updated_at=TEST_NOW,
         )
     )
 
@@ -101,9 +114,61 @@ def test_get_next_lesson_fails_when_assignment_variant_is_missing(tmp_path):
         lesson_service.get_next_lesson(GetNextLessonRequest())
 
 
+def test_get_next_lesson_continues_after_assessed_assignment(tmp_path):
+    session_service, lesson_service, assessment_service = _services(tmp_path)
+    session_service.start_session(StartSessionRequest(initial_rust_level=RustLevel.NEW))
+    first = lesson_service.get_next_lesson(GetNextLessonRequest())
+    assert first.assignment is not None
+    submitted = assessment_service.submit_attempt(
+        SubmitAttemptRequest(
+            assignment_id=first.assignment.assignment_id,
+            code=HELLO_RUST_CODE,
+            compiler_output=SUCCESSFUL_CARGO_OUTPUT,
+            runtime_output=HELLO_RUST_OUTPUT,
+            learner_notes="I created a Cargo binary and checked that it runs.",
+        )
+    )
+    assessment_service.assess_attempt(AssessAttemptRequest(attempt_id=submitted.attempt_id))
+
+    response = lesson_service.get_next_lesson(GetNextLessonRequest())
+
+    assert response.pending_assessment is False
+    assert response.assignment is not None
+    assert response.assignment.assignment_id == ASSIGNMENT_ID_2
+    assert response.assignment.concept_id == VARIABLES_CONCEPT_ID
+    assert response.assignment.selection_rationale.startswith(
+        "Selected by accelerate action after assessment"
+    )
+
+
+def test_get_next_lesson_repeats_after_insufficient_evidence(tmp_path):
+    session_service, lesson_service, assessment_service = _services(tmp_path)
+    session_service.start_session(StartSessionRequest(initial_rust_level=RustLevel.NEW))
+    first = lesson_service.get_next_lesson(GetNextLessonRequest())
+    assert first.assignment is not None
+    submitted = assessment_service.submit_attempt(
+        SubmitAttemptRequest(
+            assignment_id=first.assignment.assignment_id,
+            runtime_output="failed",
+            agent_notes="Agent says this passes.",
+            output_truncated=True,
+        )
+    )
+    assessment_service.assess_attempt(AssessAttemptRequest(attempt_id=submitted.attempt_id))
+
+    response = lesson_service.get_next_lesson(GetNextLessonRequest())
+
+    assert response.assignment is not None
+    assert response.assignment.assignment_id == ASSIGNMENT_ID_2
+    assert response.assignment.concept_id == CARGO_HELLO_WORLD_CONCEPT_ID
+    assert response.assignment.selection_rationale.startswith(
+        "Selected by repeat action after assessment"
+    )
+
+
 def _services(tmp_path):
     repositories = JsonRepositoryFactory(tmp_path)
-    now = lambda: datetime(2026, 5, 10, tzinfo=timezone.utc)
+    now = lambda: TEST_NOW
     return (
         SessionService(
             learner_repository=repositories.learner_repository(),
@@ -113,7 +178,16 @@ def _services(tmp_path):
             learner_repository=repositories.learner_repository(),
             assignment_repository=repositories.assignment_repository(),
             attempt_repository=repositories.attempt_repository(),
+            assessment_repository=repositories.assessment_repository(),
             curriculum_repository=repositories.curriculum_repository(),
+            now=now,
+        ),
+        AssessmentService(
+            assignment_repository=repositories.assignment_repository(),
+            attempt_repository=repositories.attempt_repository(),
+            assessment_repository=repositories.assessment_repository(),
+            curriculum_repository=repositories.curriculum_repository(),
+            learner_repository=repositories.learner_repository(),
             now=now,
         ),
     )

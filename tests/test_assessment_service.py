@@ -1,14 +1,13 @@
 from __future__ import annotations
 
 import json
-from datetime import datetime, timezone
 
 import pytest
 from pydantic import ValidationError as PydanticValidationError
 
 from rust_sensei.domain.attempt import AttemptSubmission
 from rust_sensei.domain.curriculum import Concept, Curriculum, LessonVariant
-from rust_sensei.domain.enums import AssignmentStatus, RustLevel
+from rust_sensei.domain.enums import AssignmentStatus, NextAction, RustLevel
 from rust_sensei.domain.learner import LearnerProfile
 from rust_sensei.domain.lesson import LessonAssignment
 from rust_sensei.domain.skill import SkillModel
@@ -21,6 +20,17 @@ from rust_sensei.repositories.json_repository import JsonRepositoryFactory
 from rust_sensei.services.assessment_service import AssessmentService
 from rust_sensei.services.lesson_service import LessonService
 from rust_sensei.services.session_service import SessionService
+from tests.constants import (
+    ASSESSMENT_ID_1,
+    ASSIGNMENT_ID_1,
+    CARGO_HELLO_WORLD_CONCEPT_ID,
+    HELLO_RUST_CODE,
+    HELLO_RUST_OUTPUT,
+    SUCCESSFUL_CARGO_OUTPUT,
+    TEST_CURRICULUM_VERSION,
+    TEST_LEARNER_ID,
+    TEST_NOW,
+)
 
 
 def test_submit_attempt_persists_attempt_and_marks_assignment_attempted(tmp_path):
@@ -30,7 +40,7 @@ def test_submit_attempt_persists_attempt_and_marks_assignment_attempted(tmp_path
     response = assessment_service.submit_attempt(
         SubmitAttemptRequest(
             assignment_id=assignment_id,
-            code='fn main() { println!("Hello, Rust Sensei"); }',
+            code=HELLO_RUST_CODE,
             compiler_output="Finished dev profile",
         )
     )
@@ -41,7 +51,7 @@ def test_submit_attempt_persists_attempt_and_marks_assignment_attempted(tmp_path
     assert response.already_submitted is False
     assert attempt is not None
     assert attempt.assignment_id == assignment_id
-    assert attempt.code == 'fn main() { println!("Hello, Rust Sensei"); }'
+    assert attempt.code == HELLO_RUST_CODE
     assert assignment is not None
     assert assignment.status == AssignmentStatus.ATTEMPTED
 
@@ -201,9 +211,9 @@ def test_assess_attempt_persists_scores_confidence_and_marks_assessed(tmp_path):
     submitted = assessment_service.submit_attempt(
         SubmitAttemptRequest(
             assignment_id=assignment_id,
-            code='fn main() { println!("Hello, Rust Sensei"); }',
-            compiler_output="Finished dev profile target(s) in 0.10s",
-            runtime_output="Hello, Rust Sensei",
+            code=HELLO_RUST_CODE,
+            compiler_output=SUCCESSFUL_CARGO_OUTPUT,
+            runtime_output=HELLO_RUST_OUTPUT,
             learner_notes="I created a Cargo binary and checked that it runs.",
         )
     )
@@ -217,9 +227,9 @@ def test_assess_attempt_persists_scores_confidence_and_marks_assessed(tmp_path):
     stored = repositories.assessment_repository().get_assessment_by_attempt_id(
         submitted.attempt_id
     )
-    profile = repositories.learner_repository().get_profile("local-default")
+    profile = repositories.learner_repository().get_profile(TEST_LEARNER_ID)
     assert response.already_assessed is False
-    assert assessment.assessment_id == "assessment_000001"
+    assert assessment.assessment_id == ASSESSMENT_ID_1
     assert assessment.assessment_status == "assessed"
     assert assessment.confidence == assessment.confidence_breakdown.overall
     assert assessment.confidence >= 0.70
@@ -229,16 +239,20 @@ def test_assess_attempt_persists_scores_confidence_and_marks_assessed(tmp_path):
     }
     assert assessment.rubric_scores["rust_correctness"].score == 0.85
     assert assessment.rubric_scores["rust_correctness"].confidence > 0
-    assert assessment.next_action in {"continue", "repeat", "accelerate"}
+    assert assessment.next_action in {
+        NextAction.CONTINUE,
+        NextAction.REPEAT,
+        NextAction.ACCELERATE,
+    }
     assert assignment is not None
     assert assignment.status == AssignmentStatus.ASSESSED
     assert stored is not None
     assert stored.assessment_id == assessment.assessment_id
     assert profile is not None
-    assert profile.skill_model.rust_concepts["cargo_hello_world"].score == 0.80
-    assert profile.skill_model.rust_concepts["cargo_hello_world"].confidence == 0.50
-    assert "assessment_id=assessment_000001" in (
-        profile.skill_model.rust_concepts["cargo_hello_world"].evidence
+    assert profile.skill_model.rust_concepts[CARGO_HELLO_WORLD_CONCEPT_ID].score == 0.80
+    assert profile.skill_model.rust_concepts[CARGO_HELLO_WORLD_CONCEPT_ID].confidence == 0.50
+    assert f"assessment_id={ASSESSMENT_ID_1}" in (
+        profile.skill_model.rust_concepts[CARGO_HELLO_WORLD_CONCEPT_ID].evidence
     )
     assert profile.skill_model.programming_dimensions == {}
 
@@ -249,8 +263,8 @@ def test_assess_attempt_is_idempotent_for_already_assessed_attempt(tmp_path):
     submitted = assessment_service.submit_attempt(
         SubmitAttemptRequest(
             assignment_id=assignment_id,
-            code='fn main() { println!("Hello, Rust Sensei"); }',
-            compiler_output="Finished dev profile target(s) in 0.10s",
+            code=HELLO_RUST_CODE,
+            compiler_output=SUCCESSFUL_CARGO_OUTPUT,
         )
     )
 
@@ -279,21 +293,21 @@ def test_assess_attempt_returns_insufficient_evidence_for_low_confidence_state(
     repositories = JsonRepositoryFactory(tmp_path)
     _save_profile(repositories)
     assignment = LessonAssignment(
-        assignment_id="assign_000001",
-        learner_id="local-default",
-        lesson_id="cargo_hello_world:intro_001",
-        concept_id="cargo_hello_world",
+        assignment_id=ASSIGNMENT_ID_1,
+        learner_id=TEST_LEARNER_ID,
+        lesson_id=f"{CARGO_HELLO_WORLD_CONCEPT_ID}:intro_001",
+        concept_id=CARGO_HELLO_WORLD_CONCEPT_ID,
         difficulty="intro",
         variant_id="intro_001",
         status=AssignmentStatus.ATTEMPTED,
         selection_rationale="test",
-        curriculum_version="0.1.0",
-        created_at=_fixed_now(),
-        updated_at=_fixed_now(),
+        curriculum_version=TEST_CURRICULUM_VERSION,
+        created_at=TEST_NOW,
+        updated_at=TEST_NOW,
     )
     attempt = AttemptSubmission(
         attempt_id="",
-        learner_id="local-default",
+        learner_id=TEST_LEARNER_ID,
         assignment_id=assignment.assignment_id,
         lesson_id=assignment.lesson_id,
         client_request_id=None,
@@ -324,7 +338,7 @@ def test_assess_attempt_returns_insufficient_evidence_for_low_confidence_state(
 
     assert response.assessment.assessment_status == "insufficient_evidence"
     assert response.assessment.confidence < 0.45
-    assert response.assessment.next_action == "repeat"
+    assert response.assessment.next_action == NextAction.REPEAT
     assert "code" in response.assessment.missing_evidence
 
 
@@ -426,21 +440,21 @@ def test_assess_attempt_rejects_unknown_rubric_ids(tmp_path):
 def test_assess_attempt_rejects_attempt_without_assessable_artifact(tmp_path):
     repositories = JsonRepositoryFactory(tmp_path)
     assignment = LessonAssignment(
-        assignment_id="assign_000001",
-        learner_id="local-default",
-        lesson_id="cargo_hello_world:intro_001",
-        concept_id="cargo_hello_world",
+        assignment_id=ASSIGNMENT_ID_1,
+        learner_id=TEST_LEARNER_ID,
+        lesson_id=f"{CARGO_HELLO_WORLD_CONCEPT_ID}:intro_001",
+        concept_id=CARGO_HELLO_WORLD_CONCEPT_ID,
         difficulty="intro",
         variant_id="intro_001",
         status=AssignmentStatus.ATTEMPTED,
         selection_rationale="test",
-        curriculum_version="0.1.0",
-        created_at=_fixed_now(),
-        updated_at=_fixed_now(),
+        curriculum_version=TEST_CURRICULUM_VERSION,
+        created_at=TEST_NOW,
+        updated_at=TEST_NOW,
     )
     attempt = AttemptSubmission(
         attempt_id="",
-        learner_id="local-default",
+        learner_id=TEST_LEARNER_ID,
         assignment_id=assignment.assignment_id,
         lesson_id=assignment.lesson_id,
         client_request_id=None,
@@ -477,7 +491,7 @@ def _create_assignment(lesson_service):
 
 def _services(tmp_path):
     repositories = JsonRepositoryFactory(tmp_path)
-    now = lambda: datetime(2026, 5, 10, tzinfo=timezone.utc)
+    now = lambda: TEST_NOW
     session_service = SessionService(
         learner_repository=repositories.learner_repository(),
         now=now,
@@ -486,6 +500,7 @@ def _services(tmp_path):
         learner_repository=repositories.learner_repository(),
         assignment_repository=repositories.assignment_repository(),
         attempt_repository=repositories.attempt_repository(),
+        assessment_repository=repositories.assessment_repository(),
         curriculum_repository=repositories.curriculum_repository(),
         now=now,
     )
@@ -518,20 +533,20 @@ def _assessment_service(repositories, curriculum_repository=None):
 
 def _manual_assignment(
     status: AssignmentStatus,
-    concept_id: str = "cargo_hello_world",
+    concept_id: str = CARGO_HELLO_WORLD_CONCEPT_ID,
 ) -> LessonAssignment:
     return LessonAssignment(
-        assignment_id="assign_000001",
-        learner_id="local-default",
+        assignment_id=ASSIGNMENT_ID_1,
+        learner_id=TEST_LEARNER_ID,
         lesson_id=f"{concept_id}:intro_001",
         concept_id=concept_id,
         difficulty="intro",
         variant_id="intro_001",
         status=status,
         selection_rationale="test",
-        curriculum_version="0.1.0",
-        created_at=_fixed_now(),
-        updated_at=_fixed_now(),
+        curriculum_version=TEST_CURRICULUM_VERSION,
+        created_at=TEST_NOW,
+        updated_at=TEST_NOW,
     )
 
 
@@ -544,8 +559,8 @@ def _manual_attempt(assignment: LessonAssignment) -> AttemptSubmission:
         client_request_id=None,
         client_request_fingerprint=None,
         workspace_root=None,
-        code='fn main() { println!("Hello, Rust Sensei"); }',
-        compiler_output="Finished dev profile target(s) in 0.10s",
+        code=HELLO_RUST_CODE,
+        compiler_output=SUCCESSFUL_CARGO_OUTPUT,
         submitted_at=_fixed_now(),
     )
 
@@ -553,12 +568,12 @@ def _manual_attempt(assignment: LessonAssignment) -> AttemptSubmission:
 def _save_profile(repositories) -> None:
     repositories.learner_repository().save_profile(
         LearnerProfile(
-            learner_id="local-default",
+            learner_id=TEST_LEARNER_ID,
             rust_level_initial=RustLevel.NEW,
-            active_concept_id="cargo_hello_world",
+            active_concept_id=CARGO_HELLO_WORLD_CONCEPT_ID,
             skill_model=SkillModel(),
-            created_at=_fixed_now(),
-            updated_at=_fixed_now(),
+            created_at=TEST_NOW,
+            updated_at=TEST_NOW,
         )
     )
 
@@ -580,7 +595,7 @@ class _StaticCurriculumRepository:
 
 
 def _fixed_now():
-    return datetime(2026, 5, 10, tzinfo=timezone.utc)
+    return TEST_NOW
 
 
 def _state_revision(tmp_path):

@@ -1,16 +1,16 @@
 from __future__ import annotations
 
-from datetime import datetime, timezone
-
 import pytest
 
 from rust_sensei.domain.assessment import AssessmentResult, ConfidenceBreakdown
+from rust_sensei.domain.enums import NextAction
 from rust_sensei.domain.skill import SkillModel, SkillScore
 from rust_sensei.domain.skill_update import (
     max_delta_for_confidence,
     update_score,
     update_skill_model,
 )
+from tests.constants import CARGO_HELLO_WORLD_CONCEPT_ID, TEST_NOW
 
 
 def test_update_skill_model_applies_confidence_dampening():
@@ -27,11 +27,11 @@ def test_update_skill_model_applies_confidence_dampening():
     updated = update_skill_model(
         model=SkillModel(),
         assessment=assessment,
-        concept_id="cargo_hello_world",
+        concept_id=CARGO_HELLO_WORLD_CONCEPT_ID,
     )
 
-    assert updated.rust_concepts["cargo_hello_world"].score == 0.70
-    assert updated.rust_concepts["cargo_hello_world"].confidence == 0.40
+    assert updated.rust_concepts[CARGO_HELLO_WORLD_CONCEPT_ID].score == 0.70
+    assert updated.rust_concepts[CARGO_HELLO_WORLD_CONCEPT_ID].confidence == 0.40
     assert updated.programming_dimensions["readability"].score == 0.70
     assert updated.programming_dimensions["readability"].confidence == 0.40
 
@@ -39,7 +39,7 @@ def test_update_skill_model_applies_confidence_dampening():
 def test_update_skill_model_skips_insufficient_evidence():
     model = SkillModel(
         rust_concepts={
-            "cargo_hello_world": SkillScore(0.60, 0.50, ["existing"]),
+            CARGO_HELLO_WORLD_CONCEPT_ID: SkillScore(0.60, 0.50, ["existing"]),
         },
     )
     assessment = _assessment(
@@ -50,7 +50,7 @@ def test_update_skill_model_skips_insufficient_evidence():
         },
     )
 
-    assert update_skill_model(model, assessment, "cargo_hello_world") == model
+    assert update_skill_model(model, assessment, CARGO_HELLO_WORLD_CONCEPT_ID) == model
 
 
 def test_update_score_confidence_bands():
@@ -95,10 +95,10 @@ def _assessment(
         ),
         missing_evidence=[],
         feedback_items=[],
-        next_action="continue",
+        next_action=NextAction.CONTINUE,
         branch_id=None,
         next_action_reason="test",
         feedback_summary="test",
         confidence=confidence,
-        created_at=datetime(2026, 5, 10, tzinfo=timezone.utc),
+        created_at=TEST_NOW,
     )

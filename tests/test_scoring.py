@@ -6,6 +6,7 @@ import pytest
 
 from rust_sensei.domain.attempt import AttemptSubmission
 from rust_sensei.domain.curriculum import Concept, LessonVariant
+from rust_sensei.domain.enums import Difficulty, NextAction
 from rust_sensei.domain.scoring import build_assessment, validate_rubric_ids
 from rust_sensei.errors import ValidationError
 
@@ -38,7 +39,7 @@ def test_build_assessment_scores_general_programming_rubrics():
                 "dsa",
             ]
         ),
-        difficulty="challenge",
+        difficulty=Difficulty.CHALLENGE,
         now=_fixed_now(),
     )
 
@@ -46,7 +47,7 @@ def test_build_assessment_scores_general_programming_rubrics():
     assert assessment.rubric_scores["rust_idioms"].score == 0.67
     assert assessment.rubric_scores["maintainability"].score == 0.82
     assert assessment.rubric_scores["dsa"].score == 0.90
-    assert assessment.next_action == "repeat"
+    assert assessment.next_action == NextAction.REPEAT
 
 
 def test_build_assessment_scores_compiler_failure_with_notes():
@@ -65,13 +66,13 @@ def test_build_assessment_scores_compiler_failure_with_notes():
             submitted_at=_fixed_now(),
         ),
         concept=_concept(["rust_correctness", "compiler_error_handling"]),
-        difficulty="intro",
+        difficulty=Difficulty.INTRO,
         now=_fixed_now(),
     )
 
     assert assessment.rubric_scores["rust_correctness"].score == 0.35
     assert assessment.rubric_scores["compiler_error_handling"].score == 0.45
-    assert assessment.next_action == "simplify"
+    assert assessment.next_action == NextAction.SIMPLIFY
 
 
 def test_validate_rubric_ids_rejects_empty_list():
