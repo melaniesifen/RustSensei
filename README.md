@@ -28,6 +28,7 @@ This repository contains design documentation and a local Python implementation 
 - Assessment service implements `submit_attempt` and an initial `assess_attempt` flow with persisted idempotent assessment records.
 - Deterministic rubric scoring and confidence measuring live in `rust_sensei/domain/scoring.py`.
 - Skill model updates with confidence dampening live in `rust_sensei/domain/skill_update.py`.
+- Append-only progress events are stored for assignment creation/viewing, attempt submission, assessment, and assignment abandonment. Lifecycle events for creation, attempt submission, assessment, and abandonment are written in the same JSON transaction as the canonical state change.
 - Setup service for Python, Cargo, and state directory diagnostics.
 - Daily append-only file logging under the configured state directory.
 - Initial tests for session, lesson assignment, attempt submission, assessment, scoring, setup, and JSON state behavior.
@@ -45,7 +46,7 @@ Known limitations:
 
 - The MCP boundary is not integration-tested because the `mcp` package is not available from the current local package index.
 - MCP tools currently use a `payload` wrapper pending SDK schema verification.
-- Progress events, `get_progress_summary`, and `update_learner_signal` are not implemented.
+- `get_progress_summary` and `update_learner_signal` are not implemented.
 - Branch target metadata and alternate prompt variants are not implemented.
 - `force_new_variant` is supported only with `abandon_active_assignment` while an active assignment exists.
 - `assess_attempt` uses deterministic scoring only. It does not call an LLM.
@@ -96,23 +97,22 @@ Open `htmlcov/index.html` in a browser to inspect file-by-file coverage. The `ht
 
 Latest known verification:
 
-- `84` tests passed.
-- Coverage passed at `93.53%`.
+- `90` tests passed.
+- Coverage passed at `93.68%`.
 - Tests ran under local Python `3.9.6` with compatibility dependencies, while project metadata still targets Python `3.11+`.
 
 ## Next Work
 
 Recommended implementation order:
 
-1. Add progress events.
-2. Add `get_progress_summary`.
-3. Add `update_learner_signal`.
-4. Add branch target metadata and branch lesson resolution.
-5. Add alternate prompt variants and deterministic variant rotation.
-6. Add MCP resources for active profile, progress summary, and curriculum concepts.
-7. Resolve MCP SDK integration and test tool schemas/calls.
-8. Add CLI diagnostics such as `doctor`.
-9. Clean up packaging and setup docs.
+1. Add `get_progress_summary`.
+2. Add `update_learner_signal`.
+3. Add branch target metadata and branch lesson resolution.
+4. Add alternate prompt variants and deterministic variant rotation.
+5. Add MCP resources for active profile, progress summary, and curriculum concepts.
+6. Resolve MCP SDK integration and test tool schemas/calls.
+7. Add CLI diagnostics such as `doctor`.
+8. Clean up packaging and setup docs.
 
 ## Documents
 
