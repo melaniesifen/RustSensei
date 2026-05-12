@@ -7,6 +7,11 @@ from pathlib import Path
 from typing import Any
 
 from rust_sensei.constants import STATE_FILE_NAME
+from rust_sensei.domain.assessment import (
+    AssessmentResult,
+    ConfidenceBreakdown,
+    FeedbackItem,
+)
 from rust_sensei.domain.attempt import AttemptSubmission, CommandRunMetadata
 from rust_sensei.domain.curriculum import Concept, Curriculum
 from rust_sensei.domain.enums import AssignmentStatus, RustLevel
@@ -210,6 +215,43 @@ class JsonAttemptRepository:
         )
 
 
+class JsonAssessmentRepository:
+    def __init__(self, store: JsonStateStore) -> None:
+        self._store = store
+
+    def save_assessment_for_assignment(
+        self,
+        result: AssessmentResult,
+        assignment: LessonAssignment,
+    ) -> tuple[AssessmentResult, bool]:
+        def transaction(
+            state: dict[str, Any],
+        ) -> tuple[tuple[AssessmentResult, bool], bool]:
+            existing = _assessment_by_attempt_id_from_state(
+                state,
+                result.attempt_id,
+            )
+            if existing is not None:
+                return (existing, False), False
+
+            created = replace(
+                result,
+                assessment_id=_next_assessment_id(state),
+            )
+            state["assessments"].append(_assessment_to_state(created))
+            _replace_assignment(state, assignment)
+            return (created, True), True
+
+        return self._store.transact(transaction)
+
+    def get_assessment_by_attempt_id(
+        self,
+        attempt_id: str,
+    ) -> AssessmentResult | None:
+        state = self._store.read()
+        return _assessment_by_attempt_id_from_state(state, attempt_id)
+
+
 class JsonCurriculumRepository:
     def __init__(self, curriculum_path: Path) -> None:
         self._curriculum_path = curriculum_path
@@ -245,6 +287,9 @@ class JsonRepositoryFactory:
 
     def attempt_repository(self) -> JsonAttemptRepository:
         return JsonAttemptRepository(self._state_store)
+
+    def assessment_repository(self) -> JsonAssessmentRepository:
+        return JsonAssessmentRepository(self._state_store)
 
     def curriculum_repository(self) -> JsonCurriculumRepository:
         return JsonCurriculumRepository(self._curriculum_path)
@@ -345,6 +390,11 @@ def _next_assignment_id(state: dict[str, Any]) -> str:
 def _next_attempt_id(state: dict[str, Any]) -> str:
     next_number = len(state["attempts"]) + 1
     return f"attempt_{next_number:06d}"
+
+
+def _next_assessment_id(state: dict[str, Any]) -> str:
+    next_number = len(state["assessments"]) + 1
+    return f"assessment_{next_number:06d}"
 
 
 def _attempt_from_state(data: dict[str, Any]) -> AttemptSubmission:
@@ -452,6 +502,127 @@ def _command_metadata_to_state(metadata: CommandRunMetadata) -> dict[str, Any]:
         "purpose": metadata.purpose,
         "risk_level": metadata.risk_level,
     }
+
+
+def _assessment_from_state(data: dict[str, Any]) -> AssessmentResult:
+    return AssessmentResult(
+        assessment_id=data["assessment_id"],
+        attempt_id=data["attempt_id"],
+        assignment_id=data["assignment_id"],
+        scoring_version=data["scoring_version"],
+        assessment_status=data["assessment_status"],
+        rubric_scores={
+            key: _skill_score_from_state(value)
+            for key, value in data.get("rubric_scores", {}).items()
+        },
+        confidence_breakdown=_confidence_breakdown_from_state(
+            data["confidence_breakdown"]
+        ),
+        missing_evidence=list(data.get("missing_evidence", [])),
+        feedback_items=[
+            _feedback_item_from_state(item)
+            for item in data.get("feedback_items", [])
+        ],
+        next_action=data["next_action"],
+        branch_id=data.get("branch_id"),
+        next_action_reason=data["next_action_reason"],
+        feedback_summary=data["feedback_summary"],
+        confidence=float(data["confidence"]),
+        created_at=_parse_datetime(data["created_at"]),
+    )
+
+
+def _assessment_to_state(result: AssessmentResult) -> dict[str, Any]:
+    return {
+        "assessment_id": result.assessment_id,
+        "attempt_id": result.attempt_id,
+        "assignment_id": result.assignment_id,
+        "scoring_version": result.scoring_version,
+        "assessment_status": result.assessment_status,
+        "rubric_scores": {
+            key: _skill_score_to_state(value)
+            for key, value in result.rubric_scores.items()
+        },
+        "confidence_breakdown": _confidence_breakdown_to_state(
+            result.confidence_breakdown
+        ),
+        "missing_evidence": list(result.missing_evidence),
+        "feedback_items": [
+            _feedback_item_to_state(item)
+            for item in result.feedback_items
+        ],
+        "next_action": result.next_action,
+        "branch_id": result.branch_id,
+        "next_action_reason": result.next_action_reason,
+        "feedback_summary": result.feedback_summary,
+        "confidence": result.confidence,
+        "created_at": _format_datetime(result.created_at),
+    }
+
+
+def _confidence_breakdown_from_state(data: dict[str, Any]) -> ConfidenceBreakdown:
+    return ConfidenceBreakdown(
+        critical_evidence_cap=(
+            None
+            if data.get("critical_evidence_cap") is None
+            else float(data["critical_evidence_cap"])
+        ),
+        evidence_completeness=float(data["evidence_completeness"]),
+        evidence_quality=float(data["evidence_quality"]),
+        rubric_confidences={
+            key: float(value)
+            for key, value in data.get("rubric_confidences", {}).items()
+        },
+        prior_consistency=float(data["prior_consistency"]),
+        task_difficulty_weight=float(data["task_difficulty_weight"]),
+        recency_weight=float(data["recency_weight"]),
+        overall=float(data["overall"]),
+    )
+
+
+def _confidence_breakdown_to_state(
+    breakdown: ConfidenceBreakdown,
+) -> dict[str, Any]:
+    return {
+        "critical_evidence_cap": breakdown.critical_evidence_cap,
+        "evidence_completeness": breakdown.evidence_completeness,
+        "evidence_quality": breakdown.evidence_quality,
+        "rubric_confidences": dict(breakdown.rubric_confidences),
+        "prior_consistency": breakdown.prior_consistency,
+        "task_difficulty_weight": breakdown.task_difficulty_weight,
+        "recency_weight": breakdown.recency_weight,
+        "overall": breakdown.overall,
+    }
+
+
+def _feedback_item_from_state(data: dict[str, Any]) -> FeedbackItem:
+    return FeedbackItem(
+        category=data["category"],
+        message=data["message"],
+        evidence=list(data.get("evidence", [])),
+    )
+
+
+def _feedback_item_to_state(item: FeedbackItem) -> dict[str, Any]:
+    return {
+        "category": item.category,
+        "message": item.message,
+        "evidence": list(item.evidence),
+    }
+
+
+def _assessment_by_attempt_id_from_state(
+    state: dict[str, Any],
+    attempt_id: str,
+) -> AssessmentResult | None:
+    return next(
+        (
+            _assessment_from_state(item)
+            for item in reversed(state["assessments"])
+            if item["attempt_id"] == attempt_id
+        ),
+        None,
+    )
 
 
 

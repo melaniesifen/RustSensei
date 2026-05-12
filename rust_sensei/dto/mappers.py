@@ -1,9 +1,19 @@
+from rust_sensei.domain.assessment import (
+    AssessmentResult,
+    ConfidenceBreakdown,
+    FeedbackItem,
+)
 from rust_sensei.domain.attempt import CommandRunMetadata
 from rust_sensei.domain.curriculum import Concept, LessonCommand, LessonVariant
 from rust_sensei.domain.learner import LearnerProfile
 from rust_sensei.domain.lesson import LessonAssignment
 from rust_sensei.domain.setup import SetupCheck
 from rust_sensei.domain.skill import SkillModel, SkillScore
+from rust_sensei.dto.assessment import (
+    AssessmentResultDTO,
+    ConfidenceBreakdownDTO,
+    FeedbackItemDTO,
+)
 from rust_sensei.dto.lesson import (
     LessonAssignmentDTO,
     LessonCommandDTO,
@@ -33,6 +43,54 @@ def skill_model_to_dto(model: SkillModel) -> dict[str, dict[str, SkillScoreDTO]]
             for key, value in model.programming_dimensions.items()
         },
     }
+
+
+def confidence_breakdown_to_dto(
+    breakdown: ConfidenceBreakdown,
+) -> ConfidenceBreakdownDTO:
+    return ConfidenceBreakdownDTO(
+        critical_evidence_cap=breakdown.critical_evidence_cap,
+        evidence_completeness=breakdown.evidence_completeness,
+        evidence_quality=breakdown.evidence_quality,
+        rubric_confidences=dict(breakdown.rubric_confidences),
+        prior_consistency=breakdown.prior_consistency,
+        task_difficulty_weight=breakdown.task_difficulty_weight,
+        recency_weight=breakdown.recency_weight,
+        overall=breakdown.overall,
+    )
+
+
+def feedback_item_to_dto(item: FeedbackItem) -> FeedbackItemDTO:
+    return FeedbackItemDTO(
+        category=item.category,
+        message=item.message,
+        evidence=list(item.evidence),
+    )
+
+
+def assessment_result_to_dto(result: AssessmentResult) -> AssessmentResultDTO:
+    return AssessmentResultDTO(
+        assessment_id=result.assessment_id,
+        attempt_id=result.attempt_id,
+        assignment_id=result.assignment_id,
+        scoring_version=result.scoring_version,
+        assessment_status=result.assessment_status,
+        rubric_scores={
+            key: skill_score_to_dto(value)
+            for key, value in result.rubric_scores.items()
+        },
+        confidence_breakdown=confidence_breakdown_to_dto(result.confidence_breakdown),
+        missing_evidence=list(result.missing_evidence),
+        feedback_items=[
+            feedback_item_to_dto(item)
+            for item in result.feedback_items
+        ],
+        next_action=result.next_action,
+        branch_id=result.branch_id,
+        next_action_reason=result.next_action_reason,
+        feedback_summary=result.feedback_summary,
+        confidence=result.confidence,
+    )
 
 
 def learner_profile_to_dto(profile: LearnerProfile) -> LearnerProfileDTO:

@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from typing import Protocol
 
+from rust_sensei.domain.assessment import AssessmentResult
 from rust_sensei.domain.attempt import AttemptSubmission
 from rust_sensei.domain.curriculum import Concept, Curriculum
 from rust_sensei.domain.learner import LearnerProfile
@@ -67,6 +68,21 @@ class AttemptRepository(Protocol):
         self,
         assignment_id: str,
     ) -> AttemptSubmission | None:
+        ...
+
+
+class AssessmentRepository(Protocol):
+    def save_assessment_for_assignment(
+        self,
+        result: AssessmentResult,
+        assignment: LessonAssignment,
+    ) -> tuple[AssessmentResult, bool]:
+        ...
+
+    def get_assessment_by_attempt_id(
+        self,
+        attempt_id: str,
+    ) -> AssessmentResult | None:
         ...
 
 
