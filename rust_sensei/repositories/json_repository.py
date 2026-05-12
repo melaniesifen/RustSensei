@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections.abc import Callable
 from dataclasses import replace
 from datetime import datetime, timezone
 from pathlib import Path
@@ -224,6 +225,20 @@ class JsonAssessmentRepository:
         result: AssessmentResult,
         assignment: LessonAssignment,
     ) -> tuple[AssessmentResult, bool]:
+        return self.save_assessment_for_assignment_and_profile(
+            result=result,
+            assignment=assignment,
+            profile_updater=None,
+        )
+
+    def save_assessment_for_assignment_and_profile(
+        self,
+        result: AssessmentResult,
+        assignment: LessonAssignment,
+        profile_updater: (
+            Callable[[AssessmentResult, LearnerProfile], LearnerProfile] | None
+        ),
+    ) -> tuple[AssessmentResult, bool]:
         def transaction(
             state: dict[str, Any],
         ) -> tuple[tuple[AssessmentResult, bool], bool]:
@@ -240,6 +255,20 @@ class JsonAssessmentRepository:
             )
             state["assessments"].append(_assessment_to_state(created))
             _replace_assignment(state, assignment)
+            if profile_updater is not None:
+                current_profile = JsonLearnerRepository._profile_from_state(
+                    state["learners"].get(assignment.learner_id)
+                )
+                if current_profile is None:
+                    raise storage_error(
+                        "Learner profile was not found during assessment save",
+                        retryable=True,
+                        learner_id=assignment.learner_id,
+                    )
+                profile = profile_updater(created, current_profile)
+                state["learners"][profile.learner_id] = (
+                    JsonLearnerRepository._profile_to_state(profile)
+                )
             return (created, True), True
 
         return self._store.transact(transaction)

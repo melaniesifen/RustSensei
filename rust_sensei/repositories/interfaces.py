@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from typing import Protocol
 
 from rust_sensei.domain.assessment import AssessmentResult
@@ -76,6 +77,14 @@ class AssessmentRepository(Protocol):
         self,
         result: AssessmentResult,
         assignment: LessonAssignment,
+    ) -> tuple[AssessmentResult, bool]:
+        ...
+
+    def save_assessment_for_assignment_and_profile(
+        self,
+        result: AssessmentResult,
+        assignment: LessonAssignment,
+        profile_updater: Callable[[AssessmentResult, LearnerProfile], LearnerProfile],
     ) -> tuple[AssessmentResult, bool]:
         ...
 
