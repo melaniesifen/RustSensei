@@ -23,7 +23,7 @@ This repository contains design documentation and a local Python implementation 
 - JSON repositories for learner profiles, lesson assignments, curriculum seed data, attempts, and assessments.
 - Atomic JSON writes with file locking and state revision tracking.
 - Session service for initial placement and active profile retrieval.
-- Lesson service for first assignment selection, active assignment reuse, pending-assessment detection, and post-assessment adaptive selection.
+- Lesson service for first assignment selection, active assignment reuse, active-assignment abandonment, pending-assessment detection, and post-assessment adaptive selection.
 - Adaptive lesson selection handlers live in `rust_sensei/domain/lesson_selection.py`.
 - Assessment service implements `submit_attempt` and an initial `assess_attempt` flow with persisted idempotent assessment records.
 - Deterministic rubric scoring and confidence measuring live in `rust_sensei/domain/scoring.py`.
@@ -46,7 +46,8 @@ Known limitations:
 - The MCP boundary is not integration-tested because the `mcp` package is not available from the current local package index.
 - MCP tools currently use a `payload` wrapper pending SDK schema verification.
 - Progress events, `get_progress_summary`, and `update_learner_signal` are not implemented.
-- Branch target metadata, alternate prompt variants, and full assignment lifecycle controls are not implemented.
+- Branch target metadata and alternate prompt variants are not implemented.
+- `force_new_variant` is supported only with `abandon_active_assignment` while an active assignment exists.
 - `assess_attempt` uses deterministic scoring only. It does not call an LLM.
 - v1 still supports only `local-default` as the learner id.
 
@@ -95,19 +96,19 @@ Open `htmlcov/index.html` in a browser to inspect file-by-file coverage. The `ht
 
 Latest known verification:
 
-- `80` tests passed.
-- Coverage passed at `93.65%`.
+- `84` tests passed.
+- Coverage passed at `93.53%`.
 - Tests ran under local Python `3.9.6` with compatibility dependencies, while project metadata still targets Python `3.11+`.
 
 ## Next Work
 
 Recommended implementation order:
 
-1. Expand assignment lifecycle for assessed, abandoned, repeated, and new-variant flows.
-2. Add progress events.
-3. Add `get_progress_summary`.
-4. Add `update_learner_signal`.
-5. Add branch target metadata and branch lesson resolution.
+1. Add progress events.
+2. Add `get_progress_summary`.
+3. Add `update_learner_signal`.
+4. Add branch target metadata and branch lesson resolution.
+5. Add alternate prompt variants and deterministic variant rotation.
 6. Add MCP resources for active profile, progress summary, and curriculum concepts.
 7. Resolve MCP SDK integration and test tool schemas/calls.
 8. Add CLI diagnostics such as `doctor`.
