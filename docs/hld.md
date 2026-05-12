@@ -57,6 +57,8 @@ This design supports these primary requirements:
 - `FR-04`: Assessment must support hybrid signals from code, command output, learner notes, and conversation summaries.
 - `FR-04`: Rust Sensei owns canonical scoring and progression decisions. Agent notes are evidence or diagnostic context, not authoritative assessment results.
 - `FR-04`: Rust Sensei may return insufficient evidence instead of assigning full rubric scores when critical artifacts are missing.
+- `FR-04`: v1 may use deterministic rubric scoring, but the assessment service must keep a clear scorer boundary so later LLM-assisted assessment can be added without changing MCP tool contracts.
+- `FR-04`: Any future LLM-assisted scorer must return structured scores, evidence, confidence, scoring version, and `scoring_provenance` model/provider metadata before the result is persisted as the canonical assessment.
 
 ### 2.5 Execution Flow
 
@@ -367,6 +369,7 @@ Example adaptive outcomes:
 - `doctor` command: Later versions should include a CLI diagnostic command that checks Python, Rust, Cargo, state path, lesson catalog, and MCP startup.
 - Specialized tracks: After general Rust fluency, later versions can add CLI, backend, async, performance, systems programming, and LeetCode-style tracks.
 - Optional code runner: v1 does not execute learner code inside Rust Sensei. A later version may add a sandboxed runner behind a separate interface.
+- LLM-assisted assessment: v1 deterministic scoring is a baseline for idempotency and local operation, not the final code-understanding strategy. A later version should add an assessment provider interface that can use an LLM to judge Rust idioms, compiler-error handling, and problem solving while preserving persisted scoring versions, evidence, confidence, and retry idempotency.
 - Richer editor integration: VS Code is the target editor for v1. Later versions may add editor-specific helpers for debugger practice, rust-analyzer diagnostics, or current-file submission.
 - Hosted mode: Later versions may support remote accounts, synced progress, and team or classroom usage. This is outside v1.
 

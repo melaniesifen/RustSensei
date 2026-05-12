@@ -42,6 +42,7 @@ Primary requirement links:
 - `MS-FR-16`: `get_next_lesson` must return an active unattempted assignment by default.
 - `MS-FR-17`: `assess_attempt` must be idempotent for the same `attempt_id`.
 - `MS-FR-18`: The server must expose typed request and response contracts for each MCP tool.
+- `MS-FR-19`: The assessment service must isolate scorer implementation details behind a provider boundary so deterministic v1 scoring can later be replaced or augmented without changing MCP tool schemas.
 
 ## 3. Non-Functional Requirements
 
@@ -228,11 +229,21 @@ class FeedbackItemDTO(BaseModel):
     evidence: list[str] = Field(default_factory=list)
 
 
+class AssessmentScoringProvenanceDTO(BaseModel):
+    scorer_type: Literal["deterministic", "llm", "hybrid"]
+    scorer_name: str
+    scorer_version: str
+    model_provider: str | None = None
+    model_name: str | None = None
+    model_version: str | None = None
+
+
 class AssessmentResultDTO(BaseModel):
     assessment_id: str
     attempt_id: str
     assignment_id: str
     scoring_version: str
+    scoring_provenance: AssessmentScoringProvenanceDTO | None = None
     assessment_status: Literal["assessed", "insufficient_evidence"]
     rubric_scores: dict[str, SkillScoreDTO]
     confidence_breakdown: ConfidenceBreakdownDTO
@@ -561,11 +572,22 @@ class AttemptSubmission:
 
 
 @dataclass
+class AssessmentScoringProvenance:
+    scorer_type: Literal["deterministic", "llm", "hybrid"]
+    scorer_name: str
+    scorer_version: str
+    model_provider: str | None
+    model_name: str | None
+    model_version: str | None
+
+
+@dataclass
 class AssessmentResult:
     assessment_id: str
     attempt_id: str
     assignment_id: str
     scoring_version: str
+    scoring_provenance: AssessmentScoringProvenance | None
     assessment_status: Literal["assessed", "insufficient_evidence"]
     rubric_scores: dict[str, SkillScore]
     confidence_breakdown: ConfidenceBreakdown
@@ -687,7 +709,22 @@ class CurriculumRepository(Protocol):
   },
   "lesson_assignments": [],
   "attempts": [],
-  "assessments": [],
+  "assessments": [
+    {
+      "assessment_id": "assessment_01",
+      "attempt_id": "attempt_01",
+      "assignment_id": "assignment_01",
+      "scoring_version": "deterministic-rubric-v1",
+      "scoring_provenance": {
+        "scorer_type": "deterministic",
+        "scorer_name": "deterministic-rubric",
+        "scorer_version": "v1",
+        "model_provider": null,
+        "model_name": null,
+        "model_version": null
+      }
+    }
+  ],
   "progress_events": [],
   "signals": []
 }
@@ -700,6 +737,7 @@ JSON repository rules:
 - Increment `state_revision` for every successful mutation.
 - Write to a temporary file, flush it, and atomically replace the prior state file.
 - Return a conflict error if a mutation expects a revision that no longer matches.
+- `scoring_provenance` is optional for backward-compatible reads of older state, but new assessments should populate it.
 
 ### 4.8 Session, Assignment, And Assessment Semantics
 
@@ -724,7 +762,31 @@ JSON repository rules:
 
 Command metadata rule: command metadata counts as a primary artifact only when it is complete: command, source, exit code, timestamp, truncation status, and either output summary or linked compiler, runtime, or test output.
 
-### 4.9 FastMCP Server Skeleton
+### 4.9 Assessment Scorer Boundary
+
+The v1 scorer may remain deterministic, but the assessment service must depend on a stable scorer interface instead of directly depending on a single scoring strategy. This keeps the `assess_attempt` MCP contract stable if later versions add LLM-assisted code assessment.
+
+```python
+class AssessmentScorer(Protocol):
+    def score_attempt(
+        self,
+        attempt: AttemptSubmission,
+        concept: Concept,
+        difficulty: str,
+        now: datetime,
+    ) -> AssessmentResult: ...
+```
+
+Provider rules:
+
+- `AssessmentService` owns idempotency, repository writes, skill updates, and progress events.
+- The scorer provider owns rubric scoring, evidence summaries, confidence, `scoring_version`, `scoring_provenance`, and missing-evidence decisions.
+- Deterministic scoring should use a version such as `deterministic-rubric-v1`.
+- Future LLM-assisted scoring must populate `scoring_provenance` with model or provider metadata before it is accepted as canonical.
+- Agent notes and LLM output are evidence sources, not unvalidated direct state mutations.
+- Retrying `assess_attempt` for the same `attempt_id` returns the persisted assessment, even if the scorer implementation or model has changed since the first call.
+
+### 4.10 FastMCP Server Skeleton
 
 ```python
 from mcp.server.fastmcp import FastMCP
