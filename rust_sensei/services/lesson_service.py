@@ -8,10 +8,16 @@ from rust_sensei.constants import ACTIVE_LEARNER_ID
 from rust_sensei.domain.curriculum import Concept, LessonVariant
 from rust_sensei.domain.enums import AssignmentStatus
 from rust_sensei.domain.lesson import LessonAssignment
+from rust_sensei.domain.lesson_selection import (
+    LessonSelectionDecision,
+    LessonSelectionContext,
+    default_lesson_selector,
+)
 from rust_sensei.dto.lesson import GetNextLessonRequest, GetNextLessonResponse
 from rust_sensei.dto.mappers import lesson_assignment_to_dto, lesson_plan_to_dto
 from rust_sensei.errors import not_found_error, validation_error
 from rust_sensei.repositories.interfaces import (
+    AssessmentRepository,
     AssignmentRepository,
     AttemptRepository,
     CurriculumRepository,
@@ -27,13 +33,16 @@ class LessonService:
         learner_repository: LearnerRepository,
         assignment_repository: AssignmentRepository,
         attempt_repository: AttemptRepository,
+        assessment_repository: AssessmentRepository,
         curriculum_repository: CurriculumRepository,
         now: Callable[[], datetime],
     ) -> None:
         self._learner_repository = learner_repository
         self._assignment_repository = assignment_repository
         self._attempt_repository = attempt_repository
+        self._assessment_repository = assessment_repository
         self._curriculum_repository = curriculum_repository
+        self._lesson_selector = default_lesson_selector()
         self._now = now
 
     def get_next_lesson(self, request: GetNextLessonRequest) -> GetNextLessonResponse:
@@ -81,37 +90,22 @@ class LessonService:
                 learner_id=request.learner_id,
             )
 
-        concept = self._get_concept(profile.active_concept_id)
-        variant = concept.default_variant()
-        now = self._now()
-        candidate = LessonAssignment(
-            assignment_id="",
-            learner_id=request.learner_id,
-            lesson_id=_lesson_id(concept.concept_id, variant.variant_id),
-            concept_id=concept.concept_id,
-            difficulty=variant.difficulty,
-            variant_id=variant.variant_id,
-            status=AssignmentStatus.ACTIVE,
-            selection_rationale="Selected from learner placement active concept.",
-            curriculum_version=self._curriculum_repository.get_curriculum().curriculum_version,
-            created_at=now,
-            updated_at=now,
+        assessed_assignment = self._assignment_repository.get_latest_assessed_assignment(
+            request.learner_id
         )
-        assignment, created = self._assignment_repository.create_active_assignment_if_absent(
-            candidate
-        )
-        if created:
-            LOGGER.info(
-                "Created lesson assignment assignment_id=%s learner_id=%s concept_id=%s",
-                assignment.assignment_id,
-                assignment.learner_id,
-                assignment.concept_id,
+        if assessed_assignment is not None:
+            decision = self._selection_after_assessment(assessed_assignment)
+        else:
+            concept = self._get_concept(profile.active_concept_id)
+            decision = LessonSelectionDecision(
+                concept=concept,
+                variant=concept.default_variant(),
+                selection_rationale="Selected from learner placement active concept.",
             )
-        return self._response_for_assignment(
-            assignment,
-            reused_active_assignment=not created,
-            concept=concept,
-            variant=variant,
+
+        return self._create_assignment_from_decision(
+            request.learner_id,
+            decision,
         )
 
     def _response_for_assignment(
@@ -140,6 +134,66 @@ class LessonService:
                 concept_id=concept_id,
             )
         return concept
+
+    def _selection_after_assessment(
+        self,
+        assignment: LessonAssignment,
+    ) -> LessonSelectionDecision:
+        assessment = self._assessment_repository.get_latest_assessment_for_assignment(
+            assignment.assignment_id
+        )
+        if assessment is None:
+            raise not_found_error(
+                "Assessment was not found for assessed assignment",
+                assignment_id=assignment.assignment_id,
+            )
+        curriculum = self._curriculum_repository.get_curriculum()
+        return self._lesson_selector.select_next_lesson(
+            LessonSelectionContext(
+                curriculum=curriculum,
+                last_assignment=assignment,
+                last_assessment=assessment,
+            )
+        )
+
+    def _create_assignment_from_decision(
+        self,
+        learner_id: str,
+        decision: LessonSelectionDecision,
+    ) -> GetNextLessonResponse:
+        now = self._now()
+        candidate = LessonAssignment(
+            assignment_id="",
+            learner_id=learner_id,
+            lesson_id=_lesson_id(
+                decision.concept.concept_id,
+                decision.variant.variant_id,
+            ),
+            concept_id=decision.concept.concept_id,
+            difficulty=decision.variant.difficulty,
+            variant_id=decision.variant.variant_id,
+            status=AssignmentStatus.ACTIVE,
+            selection_rationale=decision.selection_rationale,
+            curriculum_version=self._curriculum_repository.get_curriculum().curriculum_version,
+            created_at=now,
+            updated_at=now,
+        )
+        assignment, created = self._assignment_repository.create_active_assignment_if_absent(
+            candidate
+        )
+        if created:
+            LOGGER.info(
+                "Created lesson assignment assignment_id=%s learner_id=%s concept_id=%s",
+                assignment.assignment_id,
+                assignment.learner_id,
+                assignment.concept_id,
+            )
+        return self._response_for_assignment(
+            assignment,
+            reused_active_assignment=not created,
+            concept=decision.concept,
+            variant=decision.variant,
+        )
 
     @staticmethod
     def _validate_request(request: GetNextLessonRequest) -> None:

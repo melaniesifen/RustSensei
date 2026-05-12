@@ -35,6 +35,7 @@ class ServiceFactory:
             learner_repository=self._repositories.learner_repository(),
             assignment_repository=self._repositories.assignment_repository(),
             attempt_repository=self._repositories.attempt_repository(),
+            assessment_repository=self._repositories.assessment_repository(),
             curriculum_repository=self._repositories.curriculum_repository(),
             now=self._now,
         )
