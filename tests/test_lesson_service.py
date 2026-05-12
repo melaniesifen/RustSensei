@@ -74,18 +74,73 @@ def test_get_next_lesson_rejects_unsupported_learner_id(tmp_path):
         lesson_service.get_next_lesson(GetNextLessonRequest(learner_id="other"))
 
 
-def test_get_next_lesson_rejects_unimplemented_variant_controls(tmp_path):
+def test_get_next_lesson_rejects_force_new_variant_for_active_assignment(tmp_path):
+    session_service, lesson_service, _ = _services(tmp_path)
+    session_service.start_session(StartSessionRequest(initial_rust_level=RustLevel.NEW))
+    lesson_service.get_next_lesson(GetNextLessonRequest())
+
+    with pytest.raises(ValidationError):
+        lesson_service.get_next_lesson(GetNextLessonRequest(force_new_variant=True))
+
+
+def test_get_next_lesson_rejects_force_new_variant_without_active_assignment(tmp_path):
     session_service, lesson_service, _ = _services(tmp_path)
     session_service.start_session(StartSessionRequest(initial_rust_level=RustLevel.NEW))
 
     with pytest.raises(ValidationError):
         lesson_service.get_next_lesson(GetNextLessonRequest(force_new_variant=True))
 
+
+def test_get_next_lesson_rejects_abandon_without_reason(tmp_path):
+    session_service, lesson_service, _ = _services(tmp_path)
+    session_service.start_session(StartSessionRequest(initial_rust_level=RustLevel.NEW))
+    lesson_service.get_next_lesson(GetNextLessonRequest())
+
     with pytest.raises(ValidationError):
         lesson_service.get_next_lesson(
             GetNextLessonRequest(
                 abandon_active_assignment=True,
-                abandonment_reason="too easy",
+            )
+        )
+
+
+def test_get_next_lesson_abandons_active_assignment_then_creates_new_one(tmp_path):
+    session_service, lesson_service, _ = _services(tmp_path)
+    repositories = JsonRepositoryFactory(tmp_path)
+    session_service.start_session(StartSessionRequest(initial_rust_level=RustLevel.NEW))
+    first = lesson_service.get_next_lesson(GetNextLessonRequest())
+    assert first.assignment is not None
+
+    response = lesson_service.get_next_lesson(
+        GetNextLessonRequest(
+            force_new_variant=True,
+            abandon_active_assignment=True,
+            abandonment_reason="too easy",
+        )
+    )
+
+    abandoned = repositories.assignment_repository().get_assignment(
+        first.assignment.assignment_id
+    )
+    assert abandoned is not None
+    assert abandoned.status == AssignmentStatus.ABANDONED
+    assert "Abandoned: too easy" in abandoned.selection_rationale
+    assert response.assignment is not None
+    assert response.assignment.assignment_id == ASSIGNMENT_ID_2
+    assert response.assignment.status == AssignmentStatus.ACTIVE
+    assert response.assignment.concept_id == CARGO_HELLO_WORLD_CONCEPT_ID
+    assert response.reused_active_assignment is False
+
+
+def test_get_next_lesson_rejects_abandon_without_active_assignment(tmp_path):
+    session_service, lesson_service, _ = _services(tmp_path)
+    session_service.start_session(StartSessionRequest(initial_rust_level=RustLevel.NEW))
+
+    with pytest.raises(ValidationError):
+        lesson_service.get_next_lesson(
+            GetNextLessonRequest(
+                abandon_active_assignment=True,
+                abandonment_reason="nothing active",
             )
         )
 
