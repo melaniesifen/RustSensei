@@ -44,6 +44,10 @@ def test_build_assessment_scores_general_programming_rubrics():
     )
 
     assert assessment.assessment_status == "assessed"
+    assert assessment.scoring_provenance is not None
+    assert assessment.scoring_provenance.scorer_type == "deterministic"
+    assert assessment.scoring_provenance.scorer_name == "deterministic-rubric"
+    assert assessment.scoring_provenance.scorer_version == "v1"
     assert assessment.rubric_scores["rust_idioms"].score == 0.67
     assert assessment.rubric_scores["maintainability"].score == 0.82
     assert assessment.rubric_scores["dsa"].score == 0.90

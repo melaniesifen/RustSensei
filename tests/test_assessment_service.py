@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import json
+from dataclasses import replace
 
 import pytest
 from pydantic import ValidationError as PydanticValidationError
 
+from rust_sensei.domain.assessment import AssessmentResult
 from rust_sensei.domain.attempt import AttemptSubmission
 from rust_sensei.domain.curriculum import Concept, Curriculum, LessonVariant
 from rust_sensei.domain.enums import AssignmentStatus, NextAction, RustLevel
@@ -242,6 +244,9 @@ def test_assess_attempt_persists_scores_confidence_and_marks_assessed(tmp_path):
     assert response.already_assessed is False
     assert assessment.assessment_id == ASSESSMENT_ID_1
     assert assessment.assessment_status == "assessed"
+    assert assessment.scoring_provenance is not None
+    assert assessment.scoring_provenance.scorer_type == "deterministic"
+    assert assessment.scoring_provenance.scorer_name == "deterministic-rubric"
     assert assessment.confidence == assessment.confidence_breakdown.overall
     assert assessment.confidence >= 0.70
     assert set(assessment.rubric_scores) == {
@@ -269,6 +274,50 @@ def test_assess_attempt_persists_scores_confidence_and_marks_assessed(tmp_path):
     assert events[0].event_type == ProgressEventType.ASSESSED
     assert events[0].assessment_id == ASSESSMENT_ID_1
     assert events[0].details["next_action"] == assessment.next_action.value
+
+
+def test_assess_attempt_uses_injected_scorer_boundary(tmp_path):
+    _, lesson_service, _, repositories = _services(tmp_path)
+    assignment_id = _create_assignment(lesson_service)
+    submitted = _assessment_service(repositories).submit_attempt(
+        SubmitAttemptRequest(
+            assignment_id=assignment_id,
+            code=HELLO_RUST_CODE,
+            compiler_output=SUCCESSFUL_CARGO_OUTPUT,
+        )
+    )
+    scorer = _RecordingScorer()
+    assessment_service = _assessment_service(repositories, scorer=scorer)
+
+    response = assessment_service.assess_attempt(
+        AssessAttemptRequest(attempt_id=submitted.attempt_id)
+    )
+
+    assert scorer.calls == 1
+    assert response.assessment.scoring_version == "test-scorer-v1"
+    assert response.assessment.scoring_provenance is not None
+    assert response.assessment.scoring_provenance.scorer_name == "test-scorer"
+
+
+def test_assess_attempt_rejects_scorer_without_provenance(tmp_path):
+    _, lesson_service, _, repositories = _services(tmp_path)
+    assignment_id = _create_assignment(lesson_service)
+    submitted = _assessment_service(repositories).submit_attempt(
+        SubmitAttemptRequest(
+            assignment_id=assignment_id,
+            code=HELLO_RUST_CODE,
+            compiler_output=SUCCESSFUL_CARGO_OUTPUT,
+        )
+    )
+    assessment_service = _assessment_service(
+        repositories,
+        scorer=_MissingProvenanceScorer(),
+    )
+
+    with pytest.raises(ValidationError):
+        assessment_service.assess_attempt(
+            AssessAttemptRequest(attempt_id=submitted.attempt_id)
+        )
 
 
 def test_assess_attempt_is_idempotent_for_already_assessed_attempt(tmp_path):
@@ -531,7 +580,7 @@ def _services(tmp_path):
     return session_service, lesson_service, assessment_service, repositories
 
 
-def _assessment_service(repositories, curriculum_repository=None):
+def _assessment_service(repositories, curriculum_repository=None, scorer=None):
     return AssessmentService(
         assignment_repository=repositories.assignment_repository(),
         attempt_repository=repositories.attempt_repository(),
@@ -543,6 +592,7 @@ def _assessment_service(repositories, curriculum_repository=None):
         ),
         learner_repository=repositories.learner_repository(),
         now=_fixed_now,
+        scorer=scorer,
     )
 
 
@@ -616,3 +666,44 @@ def _fixed_now():
 def _state_revision(tmp_path):
     state = json.loads((tmp_path / "state.json").read_text(encoding="utf-8"))
     return state["state_revision"]
+
+
+class _RecordingScorer:
+    def __init__(self) -> None:
+        self.calls = 0
+
+    def score_attempt(self, attempt, concept, difficulty, now) -> AssessmentResult:
+        from rust_sensei.domain.scoring import build_assessment
+
+        self.calls += 1
+        assessment = build_assessment(
+            attempt=attempt,
+            concept=concept,
+            difficulty=difficulty,
+            now=now,
+        )
+        assert assessment.scoring_provenance is not None
+        return replace(
+            assessment,
+            scoring_version="test-scorer-v1",
+            scoring_provenance=replace(
+                assessment.scoring_provenance,
+                scorer_name="test-scorer",
+                scorer_version="v1",
+            ),
+        )
+
+
+class _MissingProvenanceScorer:
+    def score_attempt(self, attempt, concept, difficulty, now) -> AssessmentResult:
+        from rust_sensei.domain.scoring import build_assessment
+
+        return replace(
+            build_assessment(
+                attempt=attempt,
+                concept=concept,
+                difficulty=difficulty,
+                now=now,
+            ),
+            scoring_provenance=None,
+        )

@@ -1,6 +1,10 @@
 from __future__ import annotations
 
-from rust_sensei.domain.assessment import AssessmentResult, ConfidenceBreakdown
+from rust_sensei.domain.assessment import (
+    AssessmentResult,
+    AssessmentScoringProvenance,
+    ConfidenceBreakdown,
+)
 from rust_sensei.domain.curriculum import Concept, Curriculum, LessonVariant
 from rust_sensei.domain.enums import AssignmentStatus, Difficulty, NextAction
 from rust_sensei.domain.lesson import LessonAssignment
@@ -151,6 +155,11 @@ def _assessment(next_action: str) -> AssessmentResult:
         attempt_id="attempt_1",
         assignment_id="assign_1",
         scoring_version="test",
+        scoring_provenance=AssessmentScoringProvenance(
+            scorer_type="deterministic",
+            scorer_name="test",
+            scorer_version="test",
+        ),
         assessment_status="assessed",
         rubric_scores={},
         confidence_breakdown=ConfidenceBreakdown(

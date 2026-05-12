@@ -2,7 +2,11 @@ from __future__ import annotations
 
 import pytest
 
-from rust_sensei.domain.assessment import AssessmentResult, ConfidenceBreakdown
+from rust_sensei.domain.assessment import (
+    AssessmentResult,
+    AssessmentScoringProvenance,
+    ConfidenceBreakdown,
+)
 from rust_sensei.domain.enums import NextAction
 from rust_sensei.domain.skill import SkillModel, SkillScore
 from rust_sensei.domain.skill_update import (
@@ -78,6 +82,11 @@ def _assessment(
         attempt_id="attempt_1",
         assignment_id="assign_1",
         scoring_version="test",
+        scoring_provenance=AssessmentScoringProvenance(
+            scorer_type="deterministic",
+            scorer_name="test",
+            scorer_version="test",
+        ),
         assessment_status=assessment_status,
         rubric_scores=rubric_scores,
         confidence_breakdown=ConfidenceBreakdown(

@@ -1,5 +1,6 @@
 from rust_sensei.domain.assessment import (
     AssessmentResult,
+    AssessmentScoringProvenance,
     ConfidenceBreakdown,
     FeedbackItem,
 )
@@ -12,6 +13,7 @@ from rust_sensei.domain.setup import SetupCheck
 from rust_sensei.domain.skill import SkillModel, SkillScore
 from rust_sensei.dto.assessment import (
     AssessmentResultDTO,
+    AssessmentScoringProvenanceDTO,
     ConfidenceBreakdownDTO,
     FeedbackItemDTO,
 )
@@ -70,12 +72,30 @@ def feedback_item_to_dto(item: FeedbackItem) -> FeedbackItemDTO:
     )
 
 
+def assessment_scoring_provenance_to_dto(
+    provenance: AssessmentScoringProvenance,
+) -> AssessmentScoringProvenanceDTO:
+    return AssessmentScoringProvenanceDTO(
+        scorer_type=provenance.scorer_type,
+        scorer_name=provenance.scorer_name,
+        scorer_version=provenance.scorer_version,
+        model_provider=provenance.model_provider,
+        model_name=provenance.model_name,
+        model_version=provenance.model_version,
+    )
+
+
 def assessment_result_to_dto(result: AssessmentResult) -> AssessmentResultDTO:
     return AssessmentResultDTO(
         assessment_id=result.assessment_id,
         attempt_id=result.attempt_id,
         assignment_id=result.assignment_id,
         scoring_version=result.scoring_version,
+        scoring_provenance=(
+            None
+            if result.scoring_provenance is None
+            else assessment_scoring_provenance_to_dto(result.scoring_provenance)
+        ),
         assessment_status=result.assessment_status,
         rubric_scores={
             key: skill_score_to_dto(value)

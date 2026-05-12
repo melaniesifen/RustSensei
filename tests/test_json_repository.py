@@ -5,7 +5,11 @@ from dataclasses import replace
 
 import pytest
 
-from rust_sensei.domain.assessment import AssessmentResult, ConfidenceBreakdown
+from rust_sensei.domain.assessment import (
+    AssessmentResult,
+    AssessmentScoringProvenance,
+    ConfidenceBreakdown,
+)
 from rust_sensei.domain.attempt import AttemptSubmission
 from rust_sensei.domain.enums import AssignmentStatus, Difficulty, NextAction, RustLevel
 from rust_sensei.domain.learner import LearnerProfile
@@ -440,12 +444,37 @@ def test_assessment_repository_saves_assessment_with_existing_wrapper(tmp_path):
 
     assert created is True
     assert saved.assessment_id == "assessment_000001"
+    assert saved.scoring_provenance is not None
+    assert saved.scoring_provenance.scorer_type == "deterministic"
     assert repositories.assessment_repository().get_assessment_by_attempt_id(
         "attempt_1"
     ) == saved
     assert repositories.assignment_repository().get_assignment(
         assignment.assignment_id
     ) == assignment
+
+
+def test_assessment_repository_reads_legacy_assessment_without_scoring_provenance(
+    tmp_path,
+):
+    repositories = JsonRepositoryFactory(tmp_path)
+    assignment = _assignment(AssignmentStatus.ASSESSED)
+    assessment = _assessment("attempt_1", assignment.assignment_id)
+    repositories.assessment_repository().save_assessment_for_assignment(
+        assessment,
+        assignment,
+    )
+    state_path = tmp_path / "state.json"
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    del state["assessments"][0]["scoring_provenance"]
+    state_path.write_text(json.dumps(state), encoding="utf-8")
+
+    saved = repositories.assessment_repository().get_assessment_by_attempt_id(
+        "attempt_1"
+    )
+
+    assert saved is not None
+    assert saved.scoring_provenance is None
 
 
 def test_assessment_repository_profile_updater_uses_current_profile_inside_transaction(
@@ -727,6 +756,11 @@ def _assessment(attempt_id, assignment_id):
         attempt_id=attempt_id,
         assignment_id=assignment_id,
         scoring_version="test",
+        scoring_provenance=AssessmentScoringProvenance(
+            scorer_type="deterministic",
+            scorer_name="test",
+            scorer_version="test",
+        ),
         assessment_status="assessed",
         rubric_scores={
             "rust_correctness": SkillScore(0.80, 0.75, ["compiled"]),

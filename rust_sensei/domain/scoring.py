@@ -3,10 +3,11 @@ from __future__ import annotations
 from dataclasses import replace
 from datetime import datetime
 from statistics import mean
-from typing import Any
+from typing import Any, Protocol
 
 from rust_sensei.domain.assessment import (
     AssessmentResult,
+    AssessmentScoringProvenance,
     ConfidenceBreakdown,
     FeedbackItem,
 )
@@ -17,6 +18,8 @@ from rust_sensei.domain.skill import SkillScore
 from rust_sensei.errors import validation_error
 
 SCORING_VERSION = "deterministic-rubric-v1"
+SCORER_NAME = "deterministic-rubric"
+SCORER_VERSION = "v1"
 INSUFFICIENT_EVIDENCE_CONFIDENCE_THRESHOLD = 0.45
 SIMPLIFY_RUST_SCORE_THRESHOLD = 0.50
 CONTINUE_RUST_SCORE_THRESHOLD = 0.70
@@ -99,6 +102,33 @@ DIFFICULTY_WEIGHTS = {
 }
 
 
+class AssessmentScorer(Protocol):
+    def score_attempt(
+        self,
+        attempt: AttemptSubmission,
+        concept: Concept,
+        difficulty: str,
+        now: datetime,
+    ) -> AssessmentResult:
+        ...
+
+
+class DeterministicAssessmentScorer:
+    def score_attempt(
+        self,
+        attempt: AttemptSubmission,
+        concept: Concept,
+        difficulty: str,
+        now: datetime,
+    ) -> AssessmentResult:
+        return build_assessment(
+            attempt=attempt,
+            concept=concept,
+            difficulty=difficulty,
+            now=now,
+        )
+
+
 def build_assessment(
     attempt: AttemptSubmission,
     concept: Concept,
@@ -153,6 +183,11 @@ def build_assessment(
         attempt_id=attempt.attempt_id,
         assignment_id=attempt.assignment_id,
         scoring_version=SCORING_VERSION,
+        scoring_provenance=AssessmentScoringProvenance(
+            scorer_type="deterministic",
+            scorer_name=SCORER_NAME,
+            scorer_version=SCORER_VERSION,
+        ),
         assessment_status=assessment_status,
         rubric_scores=rubric_scores,
         confidence_breakdown=confidence_breakdown,

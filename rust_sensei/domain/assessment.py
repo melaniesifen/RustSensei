@@ -8,6 +8,7 @@ from rust_sensei.domain.enums import NextAction
 from rust_sensei.domain.skill import SkillScore
 
 AssessmentStatus = Literal["assessed", "insufficient_evidence"]
+ScorerType = Literal["deterministic", "llm", "hybrid"]
 
 
 @dataclass(frozen=True)
@@ -30,11 +31,22 @@ class FeedbackItem:
 
 
 @dataclass(frozen=True)
+class AssessmentScoringProvenance:
+    scorer_type: ScorerType
+    scorer_name: str
+    scorer_version: str
+    model_provider: str | None = None
+    model_name: str | None = None
+    model_version: str | None = None
+
+
+@dataclass(frozen=True)
 class AssessmentResult:
     assessment_id: str
     attempt_id: str
     assignment_id: str
     scoring_version: str
+    scoring_provenance: AssessmentScoringProvenance | None
     assessment_status: AssessmentStatus
     rubric_scores: dict[str, SkillScore]
     confidence_breakdown: ConfidenceBreakdown

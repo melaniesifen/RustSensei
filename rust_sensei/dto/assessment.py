@@ -26,11 +26,21 @@ class FeedbackItemDTO(StrictDTO):
     evidence: list[str] = Field(default_factory=list)
 
 
+class AssessmentScoringProvenanceDTO(StrictDTO):
+    scorer_type: Literal["deterministic", "llm", "hybrid"]
+    scorer_name: str
+    scorer_version: str
+    model_provider: str | None = None
+    model_name: str | None = None
+    model_version: str | None = None
+
+
 class AssessmentResultDTO(StrictDTO):
     assessment_id: str
     attempt_id: str
     assignment_id: str
     scoring_version: str
+    scoring_provenance: AssessmentScoringProvenanceDTO | None = None
     assessment_status: Literal["assessed", "insufficient_evidence"]
     rubric_scores: dict[str, SkillScoreDTO]
     confidence_breakdown: ConfidenceBreakdownDTO

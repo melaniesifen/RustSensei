@@ -10,6 +10,7 @@ from typing import Any
 from rust_sensei.constants import STATE_FILE_NAME
 from rust_sensei.domain.assessment import (
     AssessmentResult,
+    AssessmentScoringProvenance,
     ConfidenceBreakdown,
     FeedbackItem,
 )
@@ -644,6 +645,9 @@ def _assessment_from_state(data: dict[str, Any]) -> AssessmentResult:
         attempt_id=data["attempt_id"],
         assignment_id=data["assignment_id"],
         scoring_version=data["scoring_version"],
+        scoring_provenance=_scoring_provenance_from_state(
+            data.get("scoring_provenance")
+        ),
         assessment_status=data["assessment_status"],
         rubric_scores={
             key: _skill_score_from_state(value)
@@ -672,6 +676,9 @@ def _assessment_to_state(result: AssessmentResult) -> dict[str, Any]:
         "attempt_id": result.attempt_id,
         "assignment_id": result.assignment_id,
         "scoring_version": result.scoring_version,
+        "scoring_provenance": _scoring_provenance_to_state(
+            result.scoring_provenance
+        ),
         "assessment_status": result.assessment_status,
         "rubric_scores": {
             key: _skill_score_to_state(value)
@@ -691,6 +698,38 @@ def _assessment_to_state(result: AssessmentResult) -> dict[str, Any]:
         "feedback_summary": result.feedback_summary,
         "confidence": result.confidence,
         "created_at": _format_datetime(result.created_at),
+    }
+
+
+def _scoring_provenance_from_state(
+    data: dict[str, Any] | None,
+) -> AssessmentScoringProvenance | None:
+    if data is None:
+        return None
+
+    return AssessmentScoringProvenance(
+        scorer_type=data["scorer_type"],
+        scorer_name=data["scorer_name"],
+        scorer_version=data["scorer_version"],
+        model_provider=data.get("model_provider"),
+        model_name=data.get("model_name"),
+        model_version=data.get("model_version"),
+    )
+
+
+def _scoring_provenance_to_state(
+    provenance: AssessmentScoringProvenance | None,
+) -> dict[str, Any] | None:
+    if provenance is None:
+        return None
+
+    return {
+        "scorer_type": provenance.scorer_type,
+        "scorer_name": provenance.scorer_name,
+        "scorer_version": provenance.scorer_version,
+        "model_provider": provenance.model_provider,
+        "model_name": provenance.model_name,
+        "model_version": provenance.model_version,
     }
 
 

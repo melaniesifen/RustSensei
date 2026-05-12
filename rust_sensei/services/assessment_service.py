@@ -10,7 +10,7 @@ from rust_sensei.constants import ACTIVE_LEARNER_ID
 from rust_sensei.domain.attempt import AttemptSubmission
 from rust_sensei.domain.enums import AssignmentStatus
 from rust_sensei.domain.progress import ProgressEvent, ProgressEventType
-from rust_sensei.domain.scoring import build_assessment
+from rust_sensei.domain.scoring import AssessmentScorer, DeterministicAssessmentScorer
 from rust_sensei.domain.skill_update import update_skill_model
 from rust_sensei.dto.assessment import AssessAttemptRequest, AssessAttemptResponse
 from rust_sensei.dto.attempt import (
@@ -47,6 +47,7 @@ class AssessmentService:
         curriculum_repository: CurriculumRepository,
         learner_repository: LearnerRepository,
         now: Callable[[], datetime],
+        scorer: AssessmentScorer | None = None,
     ) -> None:
         self._assignment_repository = assignment_repository
         self._attempt_repository = attempt_repository
@@ -54,6 +55,7 @@ class AssessmentService:
         self._curriculum_repository = curriculum_repository
         self._learner_repository = learner_repository
         self._now = now
+        self._scorer = scorer or DeterministicAssessmentScorer()
 
     def submit_attempt(self, request: SubmitAttemptRequest) -> SubmitAttemptResponse:
         self._validate_request(request)
@@ -181,12 +183,17 @@ class AssessmentService:
             )
 
         now = self._now()
-        candidate = build_assessment(
+        candidate = self._scorer.score_attempt(
             attempt=attempt,
             concept=concept,
             difficulty=assignment.difficulty,
             now=now,
         )
+        if candidate.scoring_provenance is None:
+            raise validation_error(
+                "Assessment scorer did not provide scoring provenance",
+                scoring_version=candidate.scoring_version,
+            )
         updated_assignment = replace(
             assignment,
             status=AssignmentStatus.ASSESSED,
