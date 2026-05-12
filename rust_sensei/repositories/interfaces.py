@@ -43,6 +43,12 @@ class AssignmentRepository(Protocol):
     def get_attempted_assignment(self, learner_id: str) -> LessonAssignment | None:
         ...
 
+    def get_latest_assessed_assignment(
+        self,
+        learner_id: str,
+    ) -> LessonAssignment | None:
+        ...
+
     def update_assignment(self, assignment: LessonAssignment) -> None:
         ...
 
@@ -91,6 +97,12 @@ class AssessmentRepository(Protocol):
     def get_assessment_by_attempt_id(
         self,
         attempt_id: str,
+    ) -> AssessmentResult | None:
+        ...
+
+    def get_latest_assessment_for_assignment(
+        self,
+        assignment_id: str,
     ) -> AssessmentResult | None:
         ...
 

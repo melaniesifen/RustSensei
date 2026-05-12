@@ -15,7 +15,7 @@ from rust_sensei.domain.assessment import (
 )
 from rust_sensei.domain.attempt import AttemptSubmission, CommandRunMetadata
 from rust_sensei.domain.curriculum import Concept, Curriculum
-from rust_sensei.domain.enums import AssignmentStatus, RustLevel
+from rust_sensei.domain.enums import AssignmentStatus, NextAction, RustLevel
 from rust_sensei.domain.learner import LearnerProfile
 from rust_sensei.domain.lesson import LessonAssignment
 from rust_sensei.domain.skill import SkillModel, SkillScore
@@ -133,6 +133,17 @@ class JsonAssignmentRepository:
             state,
             learner_id=learner_id,
             status=AssignmentStatus.ATTEMPTED,
+        )
+
+    def get_latest_assessed_assignment(
+        self,
+        learner_id: str,
+    ) -> LessonAssignment | None:
+        state = self._store.read()
+        return _assignment_with_status_from_state(
+            state,
+            learner_id=learner_id,
+            status=AssignmentStatus.ASSESSED,
         )
 
     def update_assignment(self, assignment: LessonAssignment) -> None:
@@ -279,6 +290,20 @@ class JsonAssessmentRepository:
     ) -> AssessmentResult | None:
         state = self._store.read()
         return _assessment_by_attempt_id_from_state(state, attempt_id)
+
+    def get_latest_assessment_for_assignment(
+        self,
+        assignment_id: str,
+    ) -> AssessmentResult | None:
+        state = self._store.read()
+        return next(
+            (
+                _assessment_from_state(item)
+                for item in reversed(state["assessments"])
+                if item["assignment_id"] == assignment_id
+            ),
+            None,
+        )
 
 
 class JsonCurriculumRepository:
@@ -552,7 +577,7 @@ def _assessment_from_state(data: dict[str, Any]) -> AssessmentResult:
             _feedback_item_from_state(item)
             for item in data.get("feedback_items", [])
         ],
-        next_action=data["next_action"],
+        next_action=NextAction(data["next_action"]),
         branch_id=data.get("branch_id"),
         next_action_reason=data["next_action_reason"],
         feedback_summary=data["feedback_summary"],
@@ -580,7 +605,7 @@ def _assessment_to_state(result: AssessmentResult) -> dict[str, Any]:
             _feedback_item_to_state(item)
             for item in result.feedback_items
         ],
-        "next_action": result.next_action,
+        "next_action": result.next_action.value,
         "branch_id": result.branch_id,
         "next_action_reason": result.next_action_reason,
         "feedback_summary": result.feedback_summary,
