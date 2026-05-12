@@ -81,6 +81,7 @@ class JsonStateStore:
                 supported_schema_version=SCHEMA_VERSION,
             )
 
+        self._apply_current_schema_defaults(state)
         return state
 
     def _write_state(self, state: dict[str, Any]) -> None:
@@ -120,3 +121,8 @@ class JsonStateStore:
             "progress_events": [],
             "signals": [],
         }
+
+    @staticmethod
+    def _apply_current_schema_defaults(state: dict[str, Any]) -> None:
+        state.setdefault("progress_events", [])
+        state.setdefault("signals", [])

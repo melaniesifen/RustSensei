@@ -2,6 +2,7 @@ import pytest
 
 from rust_sensei.domain.enums import AssignmentStatus, RustLevel
 from rust_sensei.domain.lesson import LessonAssignment
+from rust_sensei.domain.progress import ProgressEventType
 from rust_sensei.dto.assessment import AssessAttemptRequest
 from rust_sensei.dto.attempt import SubmitAttemptRequest
 from rust_sensei.dto.lesson import GetNextLessonRequest
@@ -27,9 +28,14 @@ from tests.constants import (
 
 def test_get_next_lesson_creates_first_assignment_from_placement(tmp_path):
     session_service, lesson_service, _ = _services(tmp_path)
+    repositories = JsonRepositoryFactory(tmp_path)
     session_service.start_session(StartSessionRequest(initial_rust_level=RustLevel.NEW))
 
     response = lesson_service.get_next_lesson(GetNextLessonRequest())
+    events = repositories.progress_event_repository().list_recent_events(
+        TEST_LEARNER_ID,
+        limit=5,
+    )
 
     assert response.reused_active_assignment is False
     assert response.assignment is not None
@@ -42,22 +48,31 @@ def test_get_next_lesson_creates_first_assignment_from_placement(tmp_path):
         "rust_correctness",
         "compiler_error_handling",
     ]
+    assert events[0].event_type == ProgressEventType.ASSIGNMENT_CREATED
+    assert events[0].assignment_id == ASSIGNMENT_ID_1
 
 
 def test_get_next_lesson_reuses_active_assignment(tmp_path):
     session_service, lesson_service, _ = _services(tmp_path)
+    repositories = JsonRepositoryFactory(tmp_path)
     session_service.start_session(
         StartSessionRequest(initial_rust_level=RustLevel.BEGINNER)
     )
 
     first = lesson_service.get_next_lesson(GetNextLessonRequest())
     second = lesson_service.get_next_lesson(GetNextLessonRequest())
+    events = repositories.progress_event_repository().list_recent_events(
+        TEST_LEARNER_ID,
+        limit=5,
+    )
 
     assert first.assignment is not None
     assert second.assignment is not None
     assert second.reused_active_assignment is True
     assert second.assignment.assignment_id == first.assignment.assignment_id
     assert second.assignment.concept_id == VARIABLES_CONCEPT_ID
+    assert events[0].event_type == ProgressEventType.ASSIGNMENT_VIEWED
+    assert events[0].assignment_id == first.assignment.assignment_id
 
 
 def test_get_next_lesson_requires_existing_profile(tmp_path):
@@ -122,6 +137,10 @@ def test_get_next_lesson_abandons_active_assignment_then_creates_new_one(tmp_pat
     abandoned = repositories.assignment_repository().get_assignment(
         first.assignment.assignment_id
     )
+    events = repositories.progress_event_repository().list_recent_events(
+        TEST_LEARNER_ID,
+        limit=5,
+    )
     assert abandoned is not None
     assert abandoned.status == AssignmentStatus.ABANDONED
     assert "Abandoned: too easy" in abandoned.selection_rationale
@@ -130,6 +149,10 @@ def test_get_next_lesson_abandons_active_assignment_then_creates_new_one(tmp_pat
     assert response.assignment.status == AssignmentStatus.ACTIVE
     assert response.assignment.concept_id == CARGO_HELLO_WORLD_CONCEPT_ID
     assert response.reused_active_assignment is False
+    assert [event.event_type for event in events[:2]] == [
+        ProgressEventType.ASSIGNMENT_CREATED,
+        ProgressEventType.ABANDONED,
+    ]
 
 
 def test_get_next_lesson_rejects_abandon_without_active_assignment(tmp_path):
@@ -167,6 +190,10 @@ def test_get_next_lesson_fails_when_assignment_variant_is_missing(tmp_path):
 
     with pytest.raises(NotFoundError):
         lesson_service.get_next_lesson(GetNextLessonRequest())
+    assert repositories.progress_event_repository().list_recent_events(
+        TEST_LEARNER_ID,
+        limit=5,
+    ) == []
 
 
 def test_get_next_lesson_continues_after_assessed_assignment(tmp_path):
@@ -235,6 +262,7 @@ def _services(tmp_path):
             attempt_repository=repositories.attempt_repository(),
             assessment_repository=repositories.assessment_repository(),
             curriculum_repository=repositories.curriculum_repository(),
+            progress_event_repository=repositories.progress_event_repository(),
             now=now,
         ),
         AssessmentService(

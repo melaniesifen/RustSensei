@@ -8,6 +8,7 @@ from rust_sensei.domain.attempt import AttemptSubmission
 from rust_sensei.domain.curriculum import Concept, Curriculum
 from rust_sensei.domain.learner import LearnerProfile
 from rust_sensei.domain.lesson import LessonAssignment
+from rust_sensei.domain.progress import ProgressEvent
 
 
 class LearnerRepository(Protocol):
@@ -31,6 +32,7 @@ class AssignmentRepository(Protocol):
     def create_active_assignment_if_absent(
         self,
         assignment: LessonAssignment,
+        event_factory: Callable[[LessonAssignment], ProgressEvent] | None = None,
     ) -> tuple[LessonAssignment, bool]:
         ...
 
@@ -49,7 +51,11 @@ class AssignmentRepository(Protocol):
     ) -> LessonAssignment | None:
         ...
 
-    def update_assignment(self, assignment: LessonAssignment) -> None:
+    def update_assignment(
+        self,
+        assignment: LessonAssignment,
+        event_factory: Callable[[LessonAssignment], ProgressEvent] | None = None,
+    ) -> None:
         ...
 
 
@@ -58,6 +64,7 @@ class AttemptRepository(Protocol):
         self,
         attempt: AttemptSubmission,
         assignment: LessonAssignment,
+        event_factory: Callable[[AttemptSubmission], ProgressEvent] | None = None,
     ) -> tuple[AttemptSubmission, bool]:
         ...
 
@@ -83,6 +90,7 @@ class AssessmentRepository(Protocol):
         self,
         result: AssessmentResult,
         assignment: LessonAssignment,
+        event_factory: Callable[[AssessmentResult], ProgressEvent] | None = None,
     ) -> tuple[AssessmentResult, bool]:
         ...
 
@@ -91,6 +99,7 @@ class AssessmentRepository(Protocol):
         result: AssessmentResult,
         assignment: LessonAssignment,
         profile_updater: Callable[[AssessmentResult, LearnerProfile], LearnerProfile],
+        event_factory: Callable[[AssessmentResult], ProgressEvent] | None = None,
     ) -> tuple[AssessmentResult, bool]:
         ...
 
@@ -112,4 +121,16 @@ class CurriculumRepository(Protocol):
         ...
 
     def get_concept(self, concept_id: str) -> Concept | None:
+        ...
+
+
+class ProgressEventRepository(Protocol):
+    def save_event(self, event: ProgressEvent) -> ProgressEvent:
+        ...
+
+    def list_recent_events(
+        self,
+        learner_id: str,
+        limit: int,
+    ) -> list[ProgressEvent]:
         ...

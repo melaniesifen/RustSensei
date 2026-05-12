@@ -13,6 +13,7 @@ from rust_sensei.domain.lesson_selection import (
     LessonSelectionContext,
     default_lesson_selector,
 )
+from rust_sensei.domain.progress import ProgressEvent, ProgressEventType
 from rust_sensei.dto.lesson import GetNextLessonRequest, GetNextLessonResponse
 from rust_sensei.dto.mappers import lesson_assignment_to_dto, lesson_plan_to_dto
 from rust_sensei.errors import not_found_error, validation_error
@@ -22,6 +23,7 @@ from rust_sensei.repositories.interfaces import (
     AttemptRepository,
     CurriculumRepository,
     LearnerRepository,
+    ProgressEventRepository,
 )
 
 LOGGER = logging.getLogger(__name__)
@@ -35,6 +37,7 @@ class LessonService:
         attempt_repository: AttemptRepository,
         assessment_repository: AssessmentRepository,
         curriculum_repository: CurriculumRepository,
+        progress_event_repository: ProgressEventRepository,
         now: Callable[[], datetime],
     ) -> None:
         self._learner_repository = learner_repository
@@ -42,6 +45,7 @@ class LessonService:
         self._attempt_repository = attempt_repository
         self._assessment_repository = assessment_repository
         self._curriculum_repository = curriculum_repository
+        self._progress_event_repository = progress_event_repository
         self._lesson_selector = default_lesson_selector()
         self._now = now
 
@@ -75,7 +79,7 @@ class LessonService:
                     active_assignment.assignment_id,
                     request.learner_id,
                 )
-                return self._response_for_assignment(
+                return self._viewed_response_for_assignment(
                     active_assignment,
                     reused_active_assignment=True,
                 )
@@ -100,7 +104,7 @@ class LessonService:
                 active_assignment_after_abandon.assignment_id,
                 request.learner_id,
             )
-            return self._response_for_assignment(
+            return self._viewed_response_for_assignment(
                 active_assignment_after_abandon,
                 reused_active_assignment=True,
             )
@@ -162,6 +166,18 @@ class LessonService:
             reused_active_assignment=reused_active_assignment,
         )
 
+    def _viewed_response_for_assignment(
+        self,
+        assignment: LessonAssignment,
+        reused_active_assignment: bool,
+    ) -> GetNextLessonResponse:
+        response = self._response_for_assignment(
+            assignment,
+            reused_active_assignment=reused_active_assignment,
+        )
+        self._record_assignment_viewed(assignment)
+        return response
+
     def _get_concept(self, concept_id: str) -> Concept:
         concept = self._curriculum_repository.get_concept(concept_id)
         if concept is None:
@@ -215,7 +231,24 @@ class LessonService:
             updated_at=now,
         )
         assignment, created = self._assignment_repository.create_active_assignment_if_absent(
-            candidate
+            candidate,
+            event_factory=lambda created_assignment: ProgressEvent(
+                event_id="",
+                learner_id=created_assignment.learner_id,
+                event_type=ProgressEventType.ASSIGNMENT_CREATED,
+                assignment_id=created_assignment.assignment_id,
+                attempt_id=None,
+                assessment_id=None,
+                details={
+                    "concept_id": created_assignment.concept_id,
+                    "difficulty": created_assignment.difficulty,
+                    "variant_id": created_assignment.variant_id,
+                    "selection_rationale": created_assignment.selection_rationale,
+                },
+                previous_status=None,
+                new_status=AssignmentStatus.ACTIVE.value,
+                created_at=now,
+            ),
         )
         if created:
             LOGGER.info(
@@ -257,11 +290,44 @@ class LessonService:
             created_at=assignment.created_at,
             updated_at=now,
         )
-        self._assignment_repository.update_assignment(abandoned)
+        self._assignment_repository.update_assignment(
+            abandoned,
+            event_factory=lambda saved_assignment: ProgressEvent(
+                event_id="",
+                learner_id=saved_assignment.learner_id,
+                event_type=ProgressEventType.ABANDONED,
+                assignment_id=saved_assignment.assignment_id,
+                attempt_id=None,
+                assessment_id=None,
+                details={"reason": abandonment_reason},
+                previous_status=AssignmentStatus.ACTIVE.value,
+                new_status=AssignmentStatus.ABANDONED.value,
+                created_at=now,
+            ),
+        )
         LOGGER.info(
             "Abandoned lesson assignment assignment_id=%s learner_id=%s",
             assignment.assignment_id,
             assignment.learner_id,
+        )
+
+    def _record_assignment_viewed(self, assignment: LessonAssignment) -> None:
+        self._progress_event_repository.save_event(
+            ProgressEvent(
+                event_id="",
+                learner_id=assignment.learner_id,
+                event_type=ProgressEventType.ASSIGNMENT_VIEWED,
+                assignment_id=assignment.assignment_id,
+                attempt_id=None,
+                assessment_id=None,
+                details={
+                    "concept_id": assignment.concept_id,
+                    "variant_id": assignment.variant_id,
+                },
+                previous_status=AssignmentStatus.ACTIVE.value,
+                new_status=AssignmentStatus.ACTIVE.value,
+                created_at=self._now(),
+            )
         )
 
     @staticmethod

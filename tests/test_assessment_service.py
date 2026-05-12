@@ -10,6 +10,7 @@ from rust_sensei.domain.curriculum import Concept, Curriculum, LessonVariant
 from rust_sensei.domain.enums import AssignmentStatus, NextAction, RustLevel
 from rust_sensei.domain.learner import LearnerProfile
 from rust_sensei.domain.lesson import LessonAssignment
+from rust_sensei.domain.progress import ProgressEventType
 from rust_sensei.domain.skill import SkillModel
 from rust_sensei.dto.assessment import AssessAttemptRequest
 from rust_sensei.dto.attempt import CommandRunMetadataDTO, SubmitAttemptRequest
@@ -47,6 +48,10 @@ def test_submit_attempt_persists_attempt_and_marks_assignment_attempted(tmp_path
 
     attempt = repositories.attempt_repository().get_attempt(response.attempt_id)
     assignment = repositories.assignment_repository().get_assignment(assignment_id)
+    events = repositories.progress_event_repository().list_recent_events(
+        TEST_LEARNER_ID,
+        limit=5,
+    )
     assert response.attempt_id == "attempt_000001"
     assert response.already_submitted is False
     assert attempt is not None
@@ -54,6 +59,8 @@ def test_submit_attempt_persists_attempt_and_marks_assignment_attempted(tmp_path
     assert attempt.code == HELLO_RUST_CODE
     assert assignment is not None
     assert assignment.status == AssignmentStatus.ATTEMPTED
+    assert events[0].event_type == ProgressEventType.ATTEMPT_SUBMITTED
+    assert events[0].attempt_id == response.attempt_id
 
 
 def test_get_next_lesson_returns_pending_assessment_after_attempt(tmp_path):
@@ -228,6 +235,10 @@ def test_assess_attempt_persists_scores_confidence_and_marks_assessed(tmp_path):
         submitted.attempt_id
     )
     profile = repositories.learner_repository().get_profile(TEST_LEARNER_ID)
+    events = repositories.progress_event_repository().list_recent_events(
+        TEST_LEARNER_ID,
+        limit=5,
+    )
     assert response.already_assessed is False
     assert assessment.assessment_id == ASSESSMENT_ID_1
     assert assessment.assessment_status == "assessed"
@@ -255,6 +266,9 @@ def test_assess_attempt_persists_scores_confidence_and_marks_assessed(tmp_path):
         profile.skill_model.rust_concepts[CARGO_HELLO_WORLD_CONCEPT_ID].evidence
     )
     assert profile.skill_model.programming_dimensions == {}
+    assert events[0].event_type == ProgressEventType.ASSESSED
+    assert events[0].assessment_id == ASSESSMENT_ID_1
+    assert events[0].details["next_action"] == assessment.next_action.value
 
 
 def test_assess_attempt_is_idempotent_for_already_assessed_attempt(tmp_path):
@@ -502,6 +516,7 @@ def _services(tmp_path):
         attempt_repository=repositories.attempt_repository(),
         assessment_repository=repositories.assessment_repository(),
         curriculum_repository=repositories.curriculum_repository(),
+        progress_event_repository=repositories.progress_event_repository(),
         now=now,
     )
     assessment_service = AssessmentService(

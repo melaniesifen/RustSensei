@@ -1,11 +1,15 @@
+from __future__ import annotations
+
 import json
 from dataclasses import replace
 
 import pytest
 
 from rust_sensei.domain.assessment import AssessmentResult, ConfidenceBreakdown
-from rust_sensei.domain.enums import Difficulty, NextAction, RustLevel
+from rust_sensei.domain.attempt import AttemptSubmission
+from rust_sensei.domain.enums import AssignmentStatus, Difficulty, NextAction, RustLevel
 from rust_sensei.domain.learner import LearnerProfile
+from rust_sensei.domain.progress import ProgressEvent, ProgressEventType
 from rust_sensei.domain.skill import SkillModel, SkillScore
 from rust_sensei.dto.session import StartSessionRequest
 from rust_sensei.errors import IdempotencyConflictError, StorageError
@@ -58,6 +62,41 @@ def test_json_state_rejects_unsupported_schema_version(tmp_path):
 
     with pytest.raises(StorageError):
         JsonStateStore(state_path).read()
+
+
+def test_json_state_defaults_missing_current_collections_for_schema_one(tmp_path):
+    state_path = tmp_path / "state.json"
+    state_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "state_revision": 1,
+                "active_learner_id": TEST_LEARNER_ID,
+                "learners": {},
+                "lesson_assignments": [],
+                "attempts": [],
+                "assessments": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+    repositories = JsonRepositoryFactory(tmp_path)
+
+    assert repositories.progress_event_repository().list_recent_events(
+        TEST_LEARNER_ID,
+        limit=5,
+    ) == []
+    saved = repositories.progress_event_repository().save_event(
+        _progress_event(
+            event_type=ProgressEventType.ASSIGNMENT_VIEWED,
+            assignment_id=ASSIGNMENT_ID_1,
+        )
+    )
+
+    state = json.loads(state_path.read_text(encoding="utf-8"))
+    assert saved.event_id == "event_000001"
+    assert state["progress_events"][0]["event_id"] == "event_000001"
+    assert state["signals"] == []
 
 
 def test_create_profile_if_absent_keeps_original_profile(tmp_path):
@@ -484,6 +523,117 @@ def test_repositories_return_latest_assessed_assignment_and_assessment(tmp_path)
     ) is None
 
 
+def test_progress_event_repository_saves_and_lists_recent_events(tmp_path):
+    repository = JsonRepositoryFactory(tmp_path).progress_event_repository()
+    first = repository.save_event(
+        _progress_event(
+            event_type=ProgressEventType.ASSIGNMENT_CREATED,
+            assignment_id=ASSIGNMENT_ID_1,
+        )
+    )
+    second = repository.save_event(
+        _progress_event(
+            event_type=ProgressEventType.ASSIGNMENT_VIEWED,
+            assignment_id=ASSIGNMENT_ID_1,
+        )
+    )
+
+    events = repository.list_recent_events(TEST_LEARNER_ID, limit=1)
+
+    assert first.event_id == "event_000001"
+    assert second.event_id == "event_000002"
+    assert events == [second]
+
+
+def test_assignment_create_rolls_back_when_progress_event_creation_fails(tmp_path):
+    repositories = JsonRepositoryFactory(tmp_path)
+
+    with pytest.raises(RuntimeError):
+        repositories.assignment_repository().create_active_assignment_if_absent(
+            _assignment(AssignmentStatus.ACTIVE),
+            event_factory=_raise_progress_event_error,
+        )
+
+    assert (
+        repositories.assignment_repository().get_active_assignment(TEST_LEARNER_ID)
+        is None
+    )
+    assert repositories.progress_event_repository().list_recent_events(
+        TEST_LEARNER_ID,
+        limit=10,
+    ) == []
+
+
+def test_assignment_update_rolls_back_when_progress_event_creation_fails(tmp_path):
+    repositories = JsonRepositoryFactory(tmp_path)
+    active = _assignment(AssignmentStatus.ACTIVE)
+    abandoned = replace(active, status=AssignmentStatus.ABANDONED)
+    repositories.assignment_repository().save_assignment(active)
+
+    with pytest.raises(RuntimeError):
+        repositories.assignment_repository().update_assignment(
+            abandoned,
+            event_factory=_raise_progress_event_error,
+        )
+
+    saved = repositories.assignment_repository().get_assignment(active.assignment_id)
+    assert saved is not None
+    assert saved.status == AssignmentStatus.ACTIVE
+    assert repositories.progress_event_repository().list_recent_events(
+        TEST_LEARNER_ID,
+        limit=10,
+    ) == []
+
+
+def test_attempt_save_rolls_back_when_progress_event_creation_fails(tmp_path):
+    repositories = JsonRepositoryFactory(tmp_path)
+    active = _assignment(AssignmentStatus.ACTIVE)
+    attempted = replace(active, status=AssignmentStatus.ATTEMPTED)
+    repositories.assignment_repository().save_assignment(active)
+
+    with pytest.raises(RuntimeError):
+        repositories.attempt_repository().save_attempt_for_assignment(
+            _attempt(active),
+            attempted,
+            event_factory=_raise_progress_event_error,
+        )
+
+    assert repositories.attempt_repository().get_attempt("attempt_000001") is None
+    saved = repositories.assignment_repository().get_assignment(active.assignment_id)
+    assert saved is not None
+    assert saved.status == AssignmentStatus.ACTIVE
+    assert repositories.progress_event_repository().list_recent_events(
+        TEST_LEARNER_ID,
+        limit=10,
+    ) == []
+
+
+def test_assessment_save_rolls_back_when_progress_event_creation_fails(tmp_path):
+    repositories = JsonRepositoryFactory(tmp_path)
+    attempted = _assignment(AssignmentStatus.ATTEMPTED)
+    assessed = replace(attempted, status=AssignmentStatus.ASSESSED)
+    repositories.assignment_repository().save_assignment(attempted)
+
+    with pytest.raises(RuntimeError):
+        repositories.assessment_repository().save_assessment_for_assignment(
+            _assessment("attempt_1", attempted.assignment_id),
+            assessed,
+            event_factory=_raise_progress_event_error,
+        )
+
+    assert (
+        repositories.assessment_repository().get_assessment_by_attempt_id("attempt_1")
+        is None
+    )
+    saved = repositories.assignment_repository().get_assignment(attempted.assignment_id)
+    assert saved is not None
+    assert saved.status == AssignmentStatus.ATTEMPTED
+    assert repositories.progress_event_repository().list_recent_events(
+        TEST_LEARNER_ID,
+        limit=10,
+    ) == []
+
+
 def test_curriculum_repository_rejects_invalid_curriculum(tmp_path):
     curriculum_path = tmp_path / "bad_curriculum.json"
     curriculum_path.write_text(
@@ -600,3 +750,44 @@ def _assessment(attempt_id, assignment_id):
         confidence=0.75,
         created_at=_fixed_now(),
     )
+
+
+def _attempt(assignment):
+    return AttemptSubmission(
+        attempt_id="",
+        learner_id=TEST_LEARNER_ID,
+        assignment_id=assignment.assignment_id,
+        lesson_id=assignment.lesson_id,
+        client_request_id=None,
+        client_request_fingerprint=None,
+        workspace_root=None,
+        code='fn main() { println!("Hello"); }',
+        compiler_output=None,
+        runtime_output="Hello",
+        test_output=None,
+        agent_notes=None,
+        output_truncated=False,
+        submitted_at=TEST_NOW,
+    )
+
+
+def _progress_event(
+    event_type: ProgressEventType,
+    assignment_id: str | None,
+) -> ProgressEvent:
+    return ProgressEvent(
+        event_id="",
+        learner_id=TEST_LEARNER_ID,
+        event_type=event_type,
+        assignment_id=assignment_id,
+        attempt_id=None,
+        assessment_id=None,
+        details={"source": "test"},
+        previous_status=None,
+        new_status=AssignmentStatus.ACTIVE.value,
+        created_at=TEST_NOW,
+    )
+
+
+def _raise_progress_event_error(_):
+    raise RuntimeError("progress event write failed")

@@ -37,6 +37,7 @@ class ServiceFactory:
             attempt_repository=self._repositories.attempt_repository(),
             assessment_repository=self._repositories.assessment_repository(),
             curriculum_repository=self._repositories.curriculum_repository(),
+            progress_event_repository=self._repositories.progress_event_repository(),
             now=self._now,
         )
 

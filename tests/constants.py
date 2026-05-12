@@ -13,6 +13,7 @@ ASSIGNMENT_ID_1 = "assign_000001"
 ASSIGNMENT_ID_2 = "assign_000002"
 ATTEMPT_ID_1 = "attempt_000001"
 ASSESSMENT_ID_1 = "assessment_000001"
+EVENT_ID_1 = "event_000001"
 
 HELLO_RUST_CODE = 'fn main() { println!("Hello, Rust Sensei"); }'
 HELLO_RUST_OUTPUT = "Hello, Rust Sensei"

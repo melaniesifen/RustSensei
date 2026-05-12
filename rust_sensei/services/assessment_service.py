@@ -9,6 +9,7 @@ from typing import Any
 from rust_sensei.constants import ACTIVE_LEARNER_ID
 from rust_sensei.domain.attempt import AttemptSubmission
 from rust_sensei.domain.enums import AssignmentStatus
+from rust_sensei.domain.progress import ProgressEvent, ProgressEventType
 from rust_sensei.domain.scoring import build_assessment
 from rust_sensei.domain.skill_update import update_skill_model
 from rust_sensei.dto.assessment import AssessAttemptRequest, AssessAttemptResponse
@@ -93,6 +94,26 @@ class AssessmentService:
         saved, created = self._attempt_repository.save_attempt_for_assignment(
             attempt,
             updated_assignment,
+            event_factory=lambda saved_attempt: ProgressEvent(
+                event_id="",
+                learner_id=saved_attempt.learner_id,
+                event_type=ProgressEventType.ATTEMPT_SUBMITTED,
+                assignment_id=saved_attempt.assignment_id,
+                attempt_id=saved_attempt.attempt_id,
+                assessment_id=None,
+                details={
+                    "lesson_id": saved_attempt.lesson_id,
+                    "has_code": bool(saved_attempt.code),
+                    "has_execution_output": bool(
+                        saved_attempt.compiler_output
+                        or saved_attempt.runtime_output
+                        or saved_attempt.test_output
+                    ),
+                },
+                previous_status=AssignmentStatus.ACTIVE.value,
+                new_status=AssignmentStatus.ATTEMPTED.value,
+                created_at=now,
+            ),
         )
         if created:
             LOGGER.info(
@@ -183,6 +204,22 @@ class AssessmentService:
                         concept_id=assignment.concept_id,
                     ),
                     updated_at=now,
+                ),
+                event_factory=lambda saved_assessment: ProgressEvent(
+                    event_id="",
+                    learner_id=attempt.learner_id,
+                    event_type=ProgressEventType.ASSESSED,
+                    assignment_id=saved_assessment.assignment_id,
+                    attempt_id=saved_assessment.attempt_id,
+                    assessment_id=saved_assessment.assessment_id,
+                    details={
+                        "assessment_status": saved_assessment.assessment_status,
+                        "confidence": saved_assessment.confidence,
+                        "next_action": saved_assessment.next_action.value,
+                    },
+                    previous_status=AssignmentStatus.ATTEMPTED.value,
+                    new_status=AssignmentStatus.ASSESSED.value,
+                    created_at=now,
                 ),
             )
         )

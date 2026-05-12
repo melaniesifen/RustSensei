@@ -18,6 +18,7 @@ from rust_sensei.domain.curriculum import Concept, Curriculum
 from rust_sensei.domain.enums import AssignmentStatus, NextAction, RustLevel
 from rust_sensei.domain.learner import LearnerProfile
 from rust_sensei.domain.lesson import LessonAssignment
+from rust_sensei.domain.progress import ProgressEvent, ProgressEventType
 from rust_sensei.domain.skill import SkillModel, SkillScore
 from rust_sensei.errors import idempotency_conflict_error, storage_error
 from rust_sensei.repositories.json_state import JsonStateStore
@@ -92,6 +93,7 @@ class JsonAssignmentRepository:
     def create_active_assignment_if_absent(
         self,
         assignment: LessonAssignment,
+        event_factory: Callable[[LessonAssignment], ProgressEvent] | None = None,
     ) -> tuple[LessonAssignment, bool]:
         def transaction(
             state: dict[str, Any],
@@ -108,6 +110,8 @@ class JsonAssignmentRepository:
                 assignment_id=_next_assignment_id(state),
             )
             state["lesson_assignments"].append(_assignment_to_state(created))
+            if event_factory is not None:
+                _append_progress_event(state, event_factory(created))
             return (created, True), True
 
         return self._store.transact(transaction)
@@ -146,8 +150,17 @@ class JsonAssignmentRepository:
             status=AssignmentStatus.ASSESSED,
         )
 
-    def update_assignment(self, assignment: LessonAssignment) -> None:
-        self.save_assignment(assignment)
+    def update_assignment(
+        self,
+        assignment: LessonAssignment,
+        event_factory: Callable[[LessonAssignment], ProgressEvent] | None = None,
+    ) -> None:
+        def mutation(state: dict[str, Any]) -> None:
+            _replace_assignment(state, assignment)
+            if event_factory is not None:
+                _append_progress_event(state, event_factory(assignment))
+
+        self._store.update(mutation)
 
 
 class JsonAttemptRepository:
@@ -158,6 +171,7 @@ class JsonAttemptRepository:
         self,
         attempt: AttemptSubmission,
         assignment: LessonAssignment,
+        event_factory: Callable[[AttemptSubmission], ProgressEvent] | None = None,
     ) -> tuple[AttemptSubmission, bool]:
         def transaction(
             state: dict[str, Any],
@@ -185,6 +199,8 @@ class JsonAttemptRepository:
             )
             state["attempts"].append(_attempt_to_state(created))
             _replace_assignment(state, assignment)
+            if event_factory is not None:
+                _append_progress_event(state, event_factory(created))
             return (created, True), True
 
         return self._store.transact(transaction)
@@ -235,11 +251,13 @@ class JsonAssessmentRepository:
         self,
         result: AssessmentResult,
         assignment: LessonAssignment,
+        event_factory: Callable[[AssessmentResult], ProgressEvent] | None = None,
     ) -> tuple[AssessmentResult, bool]:
         return self.save_assessment_for_assignment_and_profile(
             result=result,
             assignment=assignment,
             profile_updater=None,
+            event_factory=event_factory,
         )
 
     def save_assessment_for_assignment_and_profile(
@@ -249,6 +267,7 @@ class JsonAssessmentRepository:
         profile_updater: (
             Callable[[AssessmentResult, LearnerProfile], LearnerProfile] | None
         ),
+        event_factory: Callable[[AssessmentResult], ProgressEvent] | None = None,
     ) -> tuple[AssessmentResult, bool]:
         def transaction(
             state: dict[str, Any],
@@ -280,6 +299,8 @@ class JsonAssessmentRepository:
                 state["learners"][profile.learner_id] = (
                     JsonLearnerRepository._profile_to_state(profile)
                 )
+            if event_factory is not None:
+                _append_progress_event(state, event_factory(created))
             return (created, True), True
 
         return self._store.transact(transaction)
@@ -325,6 +346,30 @@ class JsonCurriculumRepository:
         return self.get_curriculum().concepts.get(concept_id)
 
 
+class JsonProgressEventRepository:
+    def __init__(self, store: JsonStateStore) -> None:
+        self._store = store
+
+    def save_event(self, event: ProgressEvent) -> ProgressEvent:
+        def transaction(state: dict[str, Any]) -> tuple[ProgressEvent, bool]:
+            return _append_progress_event(state, event), True
+
+        return self._store.transact(transaction)
+
+    def list_recent_events(
+        self,
+        learner_id: str,
+        limit: int,
+    ) -> list[ProgressEvent]:
+        state = self._store.read()
+        events = [
+            _progress_event_from_state(item)
+            for item in reversed(state["progress_events"])
+            if item["learner_id"] == learner_id
+        ]
+        return events[:limit]
+
+
 class JsonRepositoryFactory:
     def __init__(self, state_dir: Path, curriculum_path: Path | None = None) -> None:
         self._state_dir = state_dir
@@ -347,6 +392,9 @@ class JsonRepositoryFactory:
 
     def curriculum_repository(self) -> JsonCurriculumRepository:
         return JsonCurriculumRepository(self._curriculum_path)
+
+    def progress_event_repository(self) -> JsonProgressEventRepository:
+        return JsonProgressEventRepository(self._state_store)
 
 
 def default_state_dir() -> Path:
@@ -449,6 +497,11 @@ def _next_attempt_id(state: dict[str, Any]) -> str:
 def _next_assessment_id(state: dict[str, Any]) -> str:
     next_number = len(state["assessments"]) + 1
     return f"assessment_{next_number:06d}"
+
+
+def _next_progress_event_id(state: dict[str, Any]) -> str:
+    next_number = len(state["progress_events"]) + 1
+    return f"event_{next_number:06d}"
 
 
 def _attempt_from_state(data: dict[str, Any]) -> AttemptSubmission:
@@ -678,6 +731,50 @@ def _assessment_by_attempt_id_from_state(
         None,
     )
 
+
+def _progress_event_from_state(data: dict[str, Any]) -> ProgressEvent:
+    return ProgressEvent(
+        event_id=data["event_id"],
+        learner_id=data["learner_id"],
+        event_type=ProgressEventType(data["event_type"]),
+        assignment_id=data.get("assignment_id"),
+        attempt_id=data.get("attempt_id"),
+        assessment_id=data.get("assessment_id"),
+        details=dict(data.get("details", {})),
+        previous_status=data.get("previous_status"),
+        new_status=data.get("new_status"),
+        created_at=_parse_datetime(data["created_at"]),
+    )
+
+
+def _progress_event_to_state(event: ProgressEvent) -> dict[str, Any]:
+    if event.created_at is None:
+        raise ValueError("created_at is required before persisting a progress event")
+
+    return {
+        "event_id": event.event_id,
+        "learner_id": event.learner_id,
+        "event_type": event.event_type.value,
+        "assignment_id": event.assignment_id,
+        "attempt_id": event.attempt_id,
+        "assessment_id": event.assessment_id,
+        "details": dict(event.details),
+        "previous_status": event.previous_status,
+        "new_status": event.new_status,
+        "created_at": _format_datetime(event.created_at),
+    }
+
+
+def _append_progress_event(
+    state: dict[str, Any],
+    event: ProgressEvent,
+) -> ProgressEvent:
+    created = replace(
+        event,
+        event_id=_next_progress_event_id(state),
+    )
+    state["progress_events"].append(_progress_event_to_state(created))
+    return created
 
 
 def _active_assignment_from_state(
