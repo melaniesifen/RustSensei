@@ -6,6 +6,7 @@ from typing import Any
 
 from pydantic import ValidationError as PydanticValidationError
 
+from rust_sensei.dto.assessment import AssessAttemptRequest
 from rust_sensei.dto.attempt import SubmitAttemptRequest
 from rust_sensei.dto.lesson import GetNextLessonRequest
 from rust_sensei.dto.session import GetLearnerProfileRequest, StartSessionRequest
@@ -60,6 +61,15 @@ def run(state_dir: Path | None = None) -> None:
         try:
             request = SubmitAttemptRequest.model_validate(payload)
             return assessment_service.submit_attempt(request).model_dump(mode="json")
+        except (RustSenseiError, PydanticValidationError) as exc:
+            log_boundary_exception(LOGGER, exc)
+            return _error_payload(exc)
+
+    @mcp.tool()
+    def assess_attempt(payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            request = AssessAttemptRequest.model_validate(payload)
+            return assessment_service.assess_attempt(request).model_dump(mode="json")
         except (RustSenseiError, PydanticValidationError) as exc:
             log_boundary_exception(LOGGER, exc)
             return _error_payload(exc)

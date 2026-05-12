@@ -4,19 +4,33 @@ import logging
 from collections.abc import Callable
 from dataclasses import replace
 from datetime import datetime
+from typing import Any
 
 from rust_sensei.constants import ACTIVE_LEARNER_ID
 from rust_sensei.domain.attempt import AttemptSubmission
-from rust_sensei.dto.attempt import CommandRunMetadataDTO
 from rust_sensei.domain.enums import AssignmentStatus
-from rust_sensei.dto.attempt import SubmitAttemptRequest, SubmitAttemptResponse
-from rust_sensei.dto.mappers import command_metadata_from_dto
+from rust_sensei.domain.scoring import build_assessment
+from rust_sensei.dto.assessment import AssessAttemptRequest, AssessAttemptResponse
+from rust_sensei.dto.attempt import (
+    CommandRunMetadataDTO,
+    SubmitAttemptRequest,
+    SubmitAttemptResponse,
+)
+from rust_sensei.dto.mappers import (
+    assessment_result_to_dto,
+    command_metadata_from_dto,
+)
 from rust_sensei.errors import (
     idempotency_conflict_error,
     not_found_error,
     validation_error,
 )
-from rust_sensei.repositories.interfaces import AssignmentRepository, AttemptRepository
+from rust_sensei.repositories.interfaces import (
+    AssessmentRepository,
+    AssignmentRepository,
+    AttemptRepository,
+    CurriculumRepository,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -26,10 +40,14 @@ class AssessmentService:
         self,
         assignment_repository: AssignmentRepository,
         attempt_repository: AttemptRepository,
+        assessment_repository: AssessmentRepository,
+        curriculum_repository: CurriculumRepository,
         now: Callable[[], datetime],
     ) -> None:
         self._assignment_repository = assignment_repository
         self._attempt_repository = attempt_repository
+        self._assessment_repository = assessment_repository
+        self._curriculum_repository = curriculum_repository
         self._now = now
 
     def submit_attempt(self, request: SubmitAttemptRequest) -> SubmitAttemptResponse:
@@ -84,6 +102,81 @@ class AssessmentService:
             already_submitted=not created,
         )
 
+    def assess_attempt(self, request: AssessAttemptRequest) -> AssessAttemptResponse:
+        if not request.attempt_id:
+            raise validation_error("attempt_id is required", field="attempt_id")
+
+        existing = self._assessment_repository.get_assessment_by_attempt_id(
+            request.attempt_id
+        )
+        if existing is not None:
+            return AssessAttemptResponse(
+                assessment=assessment_result_to_dto(existing),
+                already_assessed=True,
+            )
+
+        attempt = self._attempt_repository.get_attempt(request.attempt_id)
+        if attempt is None:
+            raise not_found_error(
+                "attempt_id was not found",
+                attempt_id=request.attempt_id,
+            )
+        self._validate_attempt_for_assessment(attempt)
+
+        assignment = self._assignment_repository.get_assignment(attempt.assignment_id)
+        if assignment is None:
+            raise not_found_error(
+                "assignment_id was not found",
+                assignment_id=attempt.assignment_id,
+            )
+        if assignment.learner_id != attempt.learner_id:
+            raise validation_error(
+                "attempt assignment does not belong to learner_id",
+                assignment_id=assignment.assignment_id,
+                learner_id=attempt.learner_id,
+            )
+        if assignment.status != AssignmentStatus.ATTEMPTED:
+            raise validation_error(
+                "assignment_id is not ready for assessment",
+                assignment_id=assignment.assignment_id,
+                status=assignment.status.value,
+            )
+
+        concept = self._curriculum_repository.get_concept(assignment.concept_id)
+        if concept is None:
+            raise not_found_error(
+                "Curriculum concept was not found",
+                concept_id=assignment.concept_id,
+            )
+
+        now = self._now()
+        candidate = build_assessment(
+            attempt=attempt,
+            concept=concept,
+            difficulty=assignment.difficulty,
+            now=now,
+        )
+        updated_assignment = replace(
+            assignment,
+            status=AssignmentStatus.ASSESSED,
+            updated_at=now,
+        )
+        saved, created = self._assessment_repository.save_assessment_for_assignment(
+            candidate,
+            updated_assignment,
+        )
+        if created:
+            LOGGER.info(
+                "Assessed attempt attempt_id=%s assessment_id=%s learner_id=%s",
+                saved.attempt_id,
+                saved.assessment_id,
+                attempt.learner_id,
+            )
+        return AssessAttemptResponse(
+            assessment=assessment_result_to_dto(saved),
+            already_assessed=not created,
+        )
+
     def _existing_attempt_for_request(
         self,
         request: SubmitAttemptRequest,
@@ -128,6 +221,21 @@ class AssessmentService:
                     "test_output",
                     "command_run_metadata",
                 ],
+            )
+
+    @staticmethod
+    def _validate_attempt_for_assessment(attempt: AttemptSubmission) -> None:
+        if attempt.learner_id != ACTIVE_LEARNER_ID:
+            raise validation_error(
+                "v1 supports only the active learner id",
+                learner_id=attempt.learner_id,
+                active_learner_id=ACTIVE_LEARNER_ID,
+            )
+
+        if not _attempt_has_assessable_artifact(attempt):
+            raise validation_error(
+                "Attempt does not contain an assessable artifact",
+                attempt_id=attempt.attempt_id,
             )
 
 
@@ -175,12 +283,15 @@ def _has_assessable_artifact(request: SubmitAttemptRequest) -> bool:
             bool(request.compiler_output),
             bool(request.runtime_output),
             bool(request.test_output),
-            any(_is_complete_command_metadata(item) for item in request.command_run_metadata),
+            any(
+                _is_complete_command_metadata(item)
+                for item in request.command_run_metadata
+            ),
         ]
     )
 
 
-def _is_complete_command_metadata(item: CommandRunMetadataDTO) -> bool:
+def _is_complete_command_metadata(item: Any) -> bool:
     return all(
         [
             item.command,
@@ -188,5 +299,20 @@ def _is_complete_command_metadata(item: CommandRunMetadataDTO) -> bool:
             item.exit_code is not None,
             item.started_at,
             item.output_summary,
+        ]
+    )
+
+
+def _attempt_has_assessable_artifact(attempt: AttemptSubmission) -> bool:
+    return any(
+        [
+            bool(attempt.code),
+            bool(attempt.compiler_output),
+            bool(attempt.runtime_output),
+            bool(attempt.test_output),
+            any(
+                _is_complete_command_metadata(item)
+                for item in attempt.command_run_metadata
+            ),
         ]
     )
