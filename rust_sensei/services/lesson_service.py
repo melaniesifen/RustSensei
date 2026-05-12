@@ -59,13 +59,49 @@ class LessonService:
             request.learner_id
         )
         if active_assignment is not None:
+            if request.abandon_active_assignment:
+                self._abandon_assignment(
+                    active_assignment,
+                    request.abandonment_reason,
+                )
+            elif request.force_new_variant:
+                raise validation_error(
+                    "force_new_variant requires abandon_active_assignment when an active assignment exists",
+                    assignment_id=active_assignment.assignment_id,
+                )
+            else:
+                LOGGER.debug(
+                    "Reusing active assignment assignment_id=%s learner_id=%s",
+                    active_assignment.assignment_id,
+                    request.learner_id,
+                )
+                return self._response_for_assignment(
+                    active_assignment,
+                    reused_active_assignment=True,
+                )
+
+        if request.abandon_active_assignment and active_assignment is None:
+            raise validation_error(
+                "abandon_active_assignment requires an active assignment",
+                learner_id=request.learner_id,
+            )
+        if request.force_new_variant and active_assignment is None:
+            raise validation_error(
+                "force_new_variant requires an active assignment and abandon_active_assignment",
+                learner_id=request.learner_id,
+            )
+
+        active_assignment_after_abandon = self._assignment_repository.get_active_assignment(
+            request.learner_id
+        )
+        if active_assignment_after_abandon is not None:
             LOGGER.debug(
                 "Reusing active assignment assignment_id=%s learner_id=%s",
-                active_assignment.assignment_id,
+                active_assignment_after_abandon.assignment_id,
                 request.learner_id,
             )
             return self._response_for_assignment(
-                active_assignment,
+                active_assignment_after_abandon,
                 reused_active_assignment=True,
             )
 
@@ -195,6 +231,39 @@ class LessonService:
             variant=decision.variant,
         )
 
+    def _abandon_assignment(
+        self,
+        assignment: LessonAssignment,
+        abandonment_reason: str | None,
+    ) -> None:
+        if not abandonment_reason:
+            raise validation_error(
+                "abandonment_reason is required when abandoning an active assignment",
+                assignment_id=assignment.assignment_id,
+            )
+        now = self._now()
+        abandoned = LessonAssignment(
+            assignment_id=assignment.assignment_id,
+            learner_id=assignment.learner_id,
+            lesson_id=assignment.lesson_id,
+            concept_id=assignment.concept_id,
+            difficulty=assignment.difficulty,
+            variant_id=assignment.variant_id,
+            status=AssignmentStatus.ABANDONED,
+            selection_rationale=(
+                f"{assignment.selection_rationale} Abandoned: {abandonment_reason}"
+            ),
+            curriculum_version=assignment.curriculum_version,
+            created_at=assignment.created_at,
+            updated_at=now,
+        )
+        self._assignment_repository.update_assignment(abandoned)
+        LOGGER.info(
+            "Abandoned lesson assignment assignment_id=%s learner_id=%s",
+            assignment.assignment_id,
+            assignment.learner_id,
+        )
+
     @staticmethod
     def _validate_request(request: GetNextLessonRequest) -> None:
         if request.learner_id != ACTIVE_LEARNER_ID:
@@ -204,14 +273,9 @@ class LessonService:
                 active_learner_id=ACTIVE_LEARNER_ID,
             )
 
-        if request.force_new_variant:
+        if request.abandon_active_assignment and not request.abandonment_reason:
             raise validation_error(
-                "force_new_variant is not supported until variant selection is implemented"
-            )
-
-        if request.abandon_active_assignment:
-            raise validation_error(
-                "abandon_active_assignment is not supported until assignment lifecycle is implemented"
+                "abandonment_reason is required when abandon_active_assignment is true"
             )
 
 
