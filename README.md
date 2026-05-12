@@ -23,7 +23,8 @@ This repository contains design documentation and a local Python implementation 
 - JSON repositories for learner profiles, lesson assignments, curriculum seed data, attempts, and assessments.
 - Atomic JSON writes with file locking and state revision tracking.
 - Session service for initial placement and active profile retrieval.
-- Lesson service for the first `get_next_lesson` flow, active assignment reuse, and pending-assessment detection after an attempt.
+- Lesson service for first assignment selection, active assignment reuse, pending-assessment detection, and post-assessment adaptive selection.
+- Adaptive lesson selection handlers live in `rust_sensei/domain/lesson_selection.py`.
 - Assessment service implements `submit_attempt` and an initial `assess_attempt` flow with persisted idempotent assessment records.
 - Deterministic rubric scoring and confidence measuring live in `rust_sensei/domain/scoring.py`.
 - Skill model updates with confidence dampening live in `rust_sensei/domain/skill_update.py`.
@@ -45,6 +46,7 @@ Known limitations:
 - The MCP boundary is not integration-tested because the `mcp` package is not available from the current local package index.
 - MCP tools currently use a `payload` wrapper pending SDK schema verification.
 - Progress events, `get_progress_summary`, and `update_learner_signal` are not implemented.
+- Branch target metadata, alternate prompt variants, and full assignment lifecycle controls are not implemented.
 - `assess_attempt` uses deterministic scoring only. It does not call an LLM.
 - v1 still supports only `local-default` as the learner id.
 
@@ -93,19 +95,19 @@ Open `htmlcov/index.html` in a browser to inspect file-by-file coverage. The `ht
 
 Latest known verification:
 
-- `73` tests passed.
-- Coverage passed at `93.48%`.
+- `80` tests passed.
+- Coverage passed at `93.65%`.
 - Tests ran under local Python `3.9.6` with compatibility dependencies, while project metadata still targets Python `3.11+`.
 
 ## Next Work
 
 Recommended implementation order:
 
-1. Implement next-step decision rules and adaptive lesson handlers.
-2. Expand assignment lifecycle for assessed, abandoned, repeated, and new-variant flows.
-3. Add progress events.
-4. Add `get_progress_summary`.
-5. Add `update_learner_signal`.
+1. Expand assignment lifecycle for assessed, abandoned, repeated, and new-variant flows.
+2. Add progress events.
+3. Add `get_progress_summary`.
+4. Add `update_learner_signal`.
+5. Add branch target metadata and branch lesson resolution.
 6. Add MCP resources for active profile, progress summary, and curriculum concepts.
 7. Resolve MCP SDK integration and test tool schemas/calls.
 8. Add CLI diagnostics such as `doctor`.
