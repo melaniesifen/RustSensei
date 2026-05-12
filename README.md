@@ -26,6 +26,7 @@ This repository contains design documentation and a local Python implementation 
 - Lesson service for the first `get_next_lesson` flow, active assignment reuse, and pending-assessment detection after an attempt.
 - Assessment service implements `submit_attempt` and an initial `assess_attempt` flow with persisted idempotent assessment records.
 - Deterministic rubric scoring and confidence measuring live in `rust_sensei/domain/scoring.py`.
+- Skill model updates with confidence dampening live in `rust_sensei/domain/skill_update.py`.
 - Setup service for Python, Cargo, and state directory diagnostics.
 - Daily append-only file logging under the configured state directory.
 - Initial tests for session, lesson assignment, attempt submission, assessment, scoring, setup, and JSON state behavior.
@@ -43,8 +44,8 @@ Known limitations:
 
 - The MCP boundary is not integration-tested because the `mcp` package is not available from the current local package index.
 - MCP tools currently use a `payload` wrapper pending SDK schema verification.
-- Skill updates, progress events, `get_progress_summary`, and `update_learner_signal` are not implemented.
-- `assess_attempt` uses deterministic scoring only. It does not call an LLM and does not update learner skill models yet.
+- Progress events, `get_progress_summary`, and `update_learner_signal` are not implemented.
+- `assess_attempt` uses deterministic scoring only. It does not call an LLM.
 - v1 still supports only `local-default` as the learner id.
 
 ## Developer Setup
@@ -92,24 +93,23 @@ Open `htmlcov/index.html` in a browser to inspect file-by-file coverage. The `ht
 
 Latest known verification:
 
-- `66` tests passed.
-- Coverage passed at `93.37%`.
+- `73` tests passed.
+- Coverage passed at `93.48%`.
 - Tests ran under local Python `3.9.6` with compatibility dependencies, while project metadata still targets Python `3.11+`.
 
 ## Next Work
 
 Recommended implementation order:
 
-1. Update learner skill model after assessment with confidence dampening.
-2. Implement next-step decision rules and adaptive lesson handlers.
-3. Expand assignment lifecycle for assessed, abandoned, repeated, and new-variant flows.
-4. Add progress events.
-5. Add `get_progress_summary`.
-6. Add `update_learner_signal`.
-7. Add MCP resources for active profile, progress summary, and curriculum concepts.
-8. Resolve MCP SDK integration and test tool schemas/calls.
-9. Add CLI diagnostics such as `doctor`.
-10. Clean up packaging and setup docs.
+1. Implement next-step decision rules and adaptive lesson handlers.
+2. Expand assignment lifecycle for assessed, abandoned, repeated, and new-variant flows.
+3. Add progress events.
+4. Add `get_progress_summary`.
+5. Add `update_learner_signal`.
+6. Add MCP resources for active profile, progress summary, and curriculum concepts.
+7. Resolve MCP SDK integration and test tool schemas/calls.
+8. Add CLI diagnostics such as `doctor`.
+9. Clean up packaging and setup docs.
 
 ## Documents
 
