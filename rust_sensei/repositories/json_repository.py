@@ -150,6 +150,17 @@ class JsonAssignmentRepository:
             status=AssignmentStatus.ASSESSED,
         )
 
+    def list_assignments_for_learner(
+        self,
+        learner_id: str,
+    ) -> list[LessonAssignment]:
+        state = self._store.read()
+        return [
+            _assignment_from_state(item)
+            for item in state["lesson_assignments"]
+            if item["learner_id"] == learner_id
+        ]
+
     def update_assignment(
         self,
         assignment: LessonAssignment,
@@ -326,6 +337,17 @@ class JsonAssessmentRepository:
             None,
         )
 
+    def list_assessments_for_assignments(
+        self,
+        assignment_ids: set[str],
+    ) -> list[AssessmentResult]:
+        state = self._store.read()
+        return [
+            _assessment_from_state(item)
+            for item in state["assessments"]
+            if item["assignment_id"] in assignment_ids
+        ]
+
 
 class JsonCurriculumRepository:
     def __init__(self, curriculum_path: Path) -> None:
@@ -361,13 +383,18 @@ class JsonProgressEventRepository:
         learner_id: str,
         limit: int,
     ) -> list[ProgressEvent]:
+        return self.list_events_for_learner(learner_id)[:limit]
+
+    def list_events_for_learner(
+        self,
+        learner_id: str,
+    ) -> list[ProgressEvent]:
         state = self._store.read()
-        events = [
+        return [
             _progress_event_from_state(item)
             for item in reversed(state["progress_events"])
             if item["learner_id"] == learner_id
         ]
-        return events[:limit]
 
 
 class JsonRepositoryFactory:

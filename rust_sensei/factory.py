@@ -9,6 +9,7 @@ from rust_sensei.repositories.json_repository import JsonRepositoryFactory, defa
 from rust_sensei.services.assessment_service import AssessmentService
 from rust_sensei.services.environment import EnvironmentProbe
 from rust_sensei.services.lesson_service import LessonService
+from rust_sensei.services.progress_service import ProgressService
 from rust_sensei.services.session_service import SessionService
 from rust_sensei.services.setup_service import SetupService
 
@@ -43,6 +44,15 @@ class ServiceFactory:
 
     def setup_service(self) -> SetupService:
         return SetupService(EnvironmentProbe(self._state_dir))
+
+    def progress_service(self) -> ProgressService:
+        return ProgressService(
+            learner_repository=self._repositories.learner_repository(),
+            assignment_repository=self._repositories.assignment_repository(),
+            assessment_repository=self._repositories.assessment_repository(),
+            curriculum_repository=self._repositories.curriculum_repository(),
+            progress_event_repository=self._repositories.progress_event_repository(),
+        )
 
     def assessment_service(self) -> AssessmentService:
         return AssessmentService(

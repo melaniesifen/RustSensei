@@ -7,6 +7,7 @@ from rust_sensei.domain.attempt import CommandRunMetadata
 from rust_sensei.domain.curriculum import Concept, LessonCommand, LessonVariant
 from rust_sensei.domain.learner import LearnerProfile
 from rust_sensei.domain.lesson import LessonAssignment
+from rust_sensei.domain.progress import ProgressEvent
 from rust_sensei.domain.setup import SetupCheck
 from rust_sensei.domain.skill import SkillModel, SkillScore
 from rust_sensei.dto.assessment import (
@@ -14,12 +15,13 @@ from rust_sensei.dto.assessment import (
     ConfidenceBreakdownDTO,
     FeedbackItemDTO,
 )
+from rust_sensei.dto.attempt import CommandRunMetadataDTO
 from rust_sensei.dto.lesson import (
     LessonAssignmentDTO,
     LessonCommandDTO,
     LessonPlanDTO,
 )
-from rust_sensei.dto.attempt import CommandRunMetadataDTO
+from rust_sensei.dto.progress import ProgressEventDTO
 from rust_sensei.dto.session import LearnerProfileDTO, SkillScoreDTO
 from rust_sensei.dto.setup import SetupCheckDTO
 
@@ -155,6 +157,20 @@ def lesson_command_to_dto(command: LessonCommand) -> LessonCommandDTO:
         risk_level=command.risk_level,
         required=command.required,
         allowed_for_agent_verification=command.allowed_for_agent_verification,
+    )
+
+
+def progress_event_to_dto(event: ProgressEvent) -> ProgressEventDTO:
+    return ProgressEventDTO(
+        event_id=event.event_id,
+        event_type=event.event_type.value,
+        assignment_id=event.assignment_id,
+        attempt_id=event.attempt_id,
+        assessment_id=event.assessment_id,
+        details=dict(event.details),
+        previous_status=event.previous_status,
+        new_status=event.new_status,
+        created_at=event.created_at.isoformat() if event.created_at else "",
     )
 
 

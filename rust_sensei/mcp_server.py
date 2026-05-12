@@ -9,6 +9,7 @@ from pydantic import ValidationError as PydanticValidationError
 from rust_sensei.dto.assessment import AssessAttemptRequest
 from rust_sensei.dto.attempt import SubmitAttemptRequest
 from rust_sensei.dto.lesson import GetNextLessonRequest
+from rust_sensei.dto.progress import GetProgressSummaryRequest
 from rust_sensei.dto.session import GetLearnerProfileRequest, StartSessionRequest
 from rust_sensei.dto.setup import GetSetupStatusRequest
 from rust_sensei.errors import RustSenseiError
@@ -26,6 +27,7 @@ def run(state_dir: Path | None = None) -> None:
     session_service = services.session_service()
     lesson_service = services.lesson_service()
     assessment_service = services.assessment_service()
+    progress_service = services.progress_service()
     setup_service = services.setup_service()
     mcp = FastMCP("rust-sensei")
 
@@ -70,6 +72,15 @@ def run(state_dir: Path | None = None) -> None:
         try:
             request = AssessAttemptRequest.model_validate(payload)
             return assessment_service.assess_attempt(request).model_dump(mode="json")
+        except (RustSenseiError, PydanticValidationError) as exc:
+            log_boundary_exception(LOGGER, exc)
+            return _error_payload(exc)
+
+    @mcp.tool()
+    def get_progress_summary(payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            request = GetProgressSummaryRequest.model_validate(payload)
+            return progress_service.get_progress_summary(request).model_dump(mode="json")
         except (RustSenseiError, PydanticValidationError) as exc:
             log_boundary_exception(LOGGER, exc)
             return _error_payload(exc)

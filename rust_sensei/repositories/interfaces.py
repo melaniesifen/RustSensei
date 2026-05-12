@@ -51,6 +51,12 @@ class AssignmentRepository(Protocol):
     ) -> LessonAssignment | None:
         ...
 
+    def list_assignments_for_learner(
+        self,
+        learner_id: str,
+    ) -> list[LessonAssignment]:
+        ...
+
     def update_assignment(
         self,
         assignment: LessonAssignment,
@@ -115,6 +121,12 @@ class AssessmentRepository(Protocol):
     ) -> AssessmentResult | None:
         ...
 
+    def list_assessments_for_assignments(
+        self,
+        assignment_ids: set[str],
+    ) -> list[AssessmentResult]:
+        ...
+
 
 class CurriculumRepository(Protocol):
     def get_curriculum(self) -> Curriculum:
@@ -132,5 +144,11 @@ class ProgressEventRepository(Protocol):
         self,
         learner_id: str,
         limit: int,
+    ) -> list[ProgressEvent]:
+        ...
+
+    def list_events_for_learner(
+        self,
+        learner_id: str,
     ) -> list[ProgressEvent]:
         ...
