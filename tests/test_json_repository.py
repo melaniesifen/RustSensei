@@ -1,10 +1,12 @@
 import json
+from dataclasses import replace
 
 import pytest
 
+from rust_sensei.domain.assessment import AssessmentResult, ConfidenceBreakdown
 from rust_sensei.domain.enums import RustLevel
 from rust_sensei.domain.learner import LearnerProfile
-from rust_sensei.domain.skill import SkillModel
+from rust_sensei.domain.skill import SkillModel, SkillScore
 from rust_sensei.dto.session import StartSessionRequest
 from rust_sensei.errors import IdempotencyConflictError, StorageError
 from rust_sensei.repositories.json_state import JsonStateStore
@@ -378,6 +380,69 @@ def test_attempt_repository_rejects_idempotency_conflict_inside_transaction(tmp_
         )
 
 
+def test_assessment_repository_saves_assessment_with_existing_wrapper(tmp_path):
+    from rust_sensei.domain.enums import AssignmentStatus
+
+    repositories = JsonRepositoryFactory(tmp_path)
+    assignment = _assignment(AssignmentStatus.ASSESSED)
+    assessment = _assessment("attempt_1", assignment.assignment_id)
+
+    saved, created = repositories.assessment_repository().save_assessment_for_assignment(
+        assessment,
+        assignment,
+    )
+
+    assert created is True
+    assert saved.assessment_id == "assessment_000001"
+    assert repositories.assessment_repository().get_assessment_by_attempt_id(
+        "attempt_1"
+    ) == saved
+    assert repositories.assignment_repository().get_assignment(
+        assignment.assignment_id
+    ) == assignment
+
+
+def test_assessment_repository_profile_updater_uses_current_profile_inside_transaction(
+    tmp_path,
+):
+    from rust_sensei.domain.enums import AssignmentStatus
+
+    repositories = JsonRepositoryFactory(tmp_path)
+    current_profile = _profile(RustLevel.NEW)
+    repositories.learner_repository().save_profile(
+        replace(
+            current_profile,
+            skill_model=SkillModel(
+                rust_concepts={
+                    "existing": SkillScore(0.65, 0.70, ["existing evidence"]),
+                }
+            ),
+        )
+    )
+    assignment = _assignment(AssignmentStatus.ASSESSED)
+    assessment = _assessment("attempt_1", assignment.assignment_id)
+
+    def update_profile(saved_assessment, profile):
+        assert saved_assessment.assessment_id == "assessment_000001"
+        assert "existing" in profile.skill_model.rust_concepts
+        return replace(profile, active_concept_id="updated")
+
+    saved, created = (
+        repositories.assessment_repository().save_assessment_for_assignment_and_profile(
+            assessment,
+            assignment,
+            update_profile,
+        )
+    )
+    saved_profile = repositories.learner_repository().get_profile("local-default")
+
+    assert created is True
+    assert saved.assessment_id == "assessment_000001"
+    assert saved_profile is not None
+    assert saved_profile.active_concept_id == "updated"
+    assert "existing" in saved_profile.skill_model.rust_concepts
+
+
 def test_curriculum_repository_rejects_invalid_curriculum(tmp_path):
     curriculum_path = tmp_path / "bad_curriculum.json"
     curriculum_path.write_text(
@@ -446,4 +511,53 @@ def _profile(level):
         skill_model=SkillModel(),
         created_at=_fixed_now(),
         updated_at=_fixed_now(),
+    )
+
+
+def _assignment(status):
+    from rust_sensei.domain.lesson import LessonAssignment
+
+    return LessonAssignment(
+        assignment_id="assign_000001",
+        learner_id="local-default",
+        lesson_id="lesson_1",
+        concept_id="cargo_hello_world",
+        difficulty="intro",
+        variant_id="intro_001",
+        status=status,
+        selection_rationale="test",
+        curriculum_version="0.1.0",
+        created_at=_fixed_now(),
+        updated_at=_fixed_now(),
+    )
+
+
+def _assessment(attempt_id, assignment_id):
+    return AssessmentResult(
+        assessment_id="",
+        attempt_id=attempt_id,
+        assignment_id=assignment_id,
+        scoring_version="test",
+        assessment_status="assessed",
+        rubric_scores={
+            "rust_correctness": SkillScore(0.80, 0.75, ["compiled"]),
+        },
+        confidence_breakdown=ConfidenceBreakdown(
+            critical_evidence_cap=None,
+            evidence_completeness=1.0,
+            evidence_quality=1.0,
+            rubric_confidences={"rust_correctness": 0.75},
+            prior_consistency=0.60,
+            task_difficulty_weight=0.70,
+            recency_weight=1.0,
+            overall=0.75,
+        ),
+        missing_evidence=[],
+        feedback_items=[],
+        next_action="continue",
+        branch_id=None,
+        next_action_reason="test",
+        feedback_summary="test",
+        confidence=0.75,
+        created_at=_fixed_now(),
     )

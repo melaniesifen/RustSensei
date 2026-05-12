@@ -9,7 +9,9 @@ from pydantic import ValidationError as PydanticValidationError
 from rust_sensei.domain.attempt import AttemptSubmission
 from rust_sensei.domain.curriculum import Concept, Curriculum, LessonVariant
 from rust_sensei.domain.enums import AssignmentStatus, RustLevel
+from rust_sensei.domain.learner import LearnerProfile
 from rust_sensei.domain.lesson import LessonAssignment
+from rust_sensei.domain.skill import SkillModel
 from rust_sensei.dto.assessment import AssessAttemptRequest
 from rust_sensei.dto.attempt import CommandRunMetadataDTO, SubmitAttemptRequest
 from rust_sensei.dto.lesson import GetNextLessonRequest
@@ -215,6 +217,7 @@ def test_assess_attempt_persists_scores_confidence_and_marks_assessed(tmp_path):
     stored = repositories.assessment_repository().get_assessment_by_attempt_id(
         submitted.attempt_id
     )
+    profile = repositories.learner_repository().get_profile("local-default")
     assert response.already_assessed is False
     assert assessment.assessment_id == "assessment_000001"
     assert assessment.assessment_status == "assessed"
@@ -231,6 +234,13 @@ def test_assess_attempt_persists_scores_confidence_and_marks_assessed(tmp_path):
     assert assignment.status == AssignmentStatus.ASSESSED
     assert stored is not None
     assert stored.assessment_id == assessment.assessment_id
+    assert profile is not None
+    assert profile.skill_model.rust_concepts["cargo_hello_world"].score == 0.80
+    assert profile.skill_model.rust_concepts["cargo_hello_world"].confidence == 0.50
+    assert "assessment_id=assessment_000001" in (
+        profile.skill_model.rust_concepts["cargo_hello_world"].evidence
+    )
+    assert profile.skill_model.programming_dimensions == {}
 
 
 def test_assess_attempt_is_idempotent_for_already_assessed_attempt(tmp_path):
@@ -267,6 +277,7 @@ def test_assess_attempt_returns_insufficient_evidence_for_low_confidence_state(
     from rust_sensei.domain.lesson import LessonAssignment
 
     repositories = JsonRepositoryFactory(tmp_path)
+    _save_profile(repositories)
     assignment = LessonAssignment(
         assignment_id="assign_000001",
         learner_id="local-default",
@@ -303,6 +314,7 @@ def test_assess_attempt_returns_insufficient_evidence_for_low_confidence_state(
         attempt_repository=repositories.attempt_repository(),
         assessment_repository=repositories.assessment_repository(),
         curriculum_repository=repositories.curriculum_repository(),
+        learner_repository=repositories.learner_repository(),
         now=_fixed_now,
     )
 
@@ -358,8 +370,25 @@ def test_assess_attempt_rejects_missing_curriculum_concept(tmp_path):
         )
 
 
+def test_assess_attempt_rejects_missing_learner_profile(tmp_path):
+    repositories = JsonRepositoryFactory(tmp_path)
+    assignment = _manual_assignment(status=AssignmentStatus.ATTEMPTED)
+    repositories.assignment_repository().save_assignment(assignment)
+    saved_attempt, _ = repositories.attempt_repository().save_attempt_for_assignment(
+        _manual_attempt(assignment),
+        assignment,
+    )
+    assessment_service = _assessment_service(repositories)
+
+    with pytest.raises(NotFoundError):
+        assessment_service.assess_attempt(
+            AssessAttemptRequest(attempt_id=saved_attempt.attempt_id)
+        )
+
+
 def test_assess_attempt_rejects_unknown_rubric_ids(tmp_path):
     repositories = JsonRepositoryFactory(tmp_path)
+    _save_profile(repositories)
     assignment = _manual_assignment(status=AssignmentStatus.ATTEMPTED)
     repositories.assignment_repository().save_assignment(assignment)
     saved_attempt, _ = repositories.attempt_repository().save_attempt_for_assignment(
@@ -430,6 +459,7 @@ def test_assess_attempt_rejects_attempt_without_assessable_artifact(tmp_path):
         attempt_repository=repositories.attempt_repository(),
         assessment_repository=repositories.assessment_repository(),
         curriculum_repository=repositories.curriculum_repository(),
+        learner_repository=repositories.learner_repository(),
         now=_fixed_now,
     )
 
@@ -464,6 +494,7 @@ def _services(tmp_path):
         attempt_repository=repositories.attempt_repository(),
         assessment_repository=repositories.assessment_repository(),
         curriculum_repository=repositories.curriculum_repository(),
+        learner_repository=repositories.learner_repository(),
         now=now,
     )
     session_service.start_session(StartSessionRequest(initial_rust_level=RustLevel.NEW))
@@ -480,6 +511,7 @@ def _assessment_service(repositories, curriculum_repository=None):
             if curriculum_repository is not None
             else repositories.curriculum_repository()
         ),
+        learner_repository=repositories.learner_repository(),
         now=_fixed_now,
     )
 
@@ -515,6 +547,19 @@ def _manual_attempt(assignment: LessonAssignment) -> AttemptSubmission:
         code='fn main() { println!("Hello, Rust Sensei"); }',
         compiler_output="Finished dev profile target(s) in 0.10s",
         submitted_at=_fixed_now(),
+    )
+
+
+def _save_profile(repositories) -> None:
+    repositories.learner_repository().save_profile(
+        LearnerProfile(
+            learner_id="local-default",
+            rust_level_initial=RustLevel.NEW,
+            active_concept_id="cargo_hello_world",
+            skill_model=SkillModel(),
+            created_at=_fixed_now(),
+            updated_at=_fixed_now(),
+        )
     )
 
 
