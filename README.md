@@ -19,15 +19,16 @@ The learner writes Rust code in VS Code. Codex operates in the same workspace, c
 This repository contains design documentation and a local Python implementation in progress.
 
 - Package metadata and CLI entrypoint.
-- Typed DTO and domain models for session, setup, lesson assignment, curriculum, and attempt submission flows.
-- JSON repositories for learner profiles, lesson assignments, curriculum seed data, and attempts.
+- Typed DTO and domain models for session, setup, lesson assignment, curriculum, attempt submission, and assessment flows.
+- JSON repositories for learner profiles, lesson assignments, curriculum seed data, attempts, and assessments.
 - Atomic JSON writes with file locking and state revision tracking.
 - Session service for initial placement and active profile retrieval.
 - Lesson service for the first `get_next_lesson` flow, active assignment reuse, and pending-assessment detection after an attempt.
-- Assessment service currently implements `submit_attempt` only. `assess_attempt` is not implemented yet.
+- Assessment service implements `submit_attempt` and an initial `assess_attempt` flow with persisted idempotent assessment records.
+- Deterministic rubric scoring and confidence measuring live in `rust_sensei/domain/scoring.py`.
 - Setup service for Python, Cargo, and state directory diagnostics.
 - Daily append-only file logging under the configured state directory.
-- Initial tests for session, lesson assignment, attempt submission, setup, and JSON state behavior.
+- Initial tests for session, lesson assignment, attempt submission, assessment, scoring, setup, and JSON state behavior.
 
 Implemented MCP tools in code:
 
@@ -35,13 +36,15 @@ Implemented MCP tools in code:
 - `get_learner_profile`
 - `get_next_lesson`
 - `submit_attempt`
+- `assess_attempt`
 - `get_setup_status`
 
 Known limitations:
 
 - The MCP boundary is not integration-tested because the `mcp` package is not available from the current local package index.
 - MCP tools currently use a `payload` wrapper pending SDK schema verification.
-- `assess_attempt`, scoring, confidence, skill updates, progress events, `get_progress_summary`, and `update_learner_signal` are not implemented.
+- Skill updates, progress events, `get_progress_summary`, and `update_learner_signal` are not implemented.
+- `assess_attempt` uses deterministic scoring only. It does not call an LLM and does not update learner skill models yet.
 - v1 still supports only `local-default` as the learner id.
 
 ## Developer Setup
@@ -89,27 +92,24 @@ Open `htmlcov/index.html` in a browser to inspect file-by-file coverage. The `ht
 
 Latest known verification:
 
-- `54` tests passed.
-- Coverage passed at `94.88%`.
+- `66` tests passed.
+- Coverage passed at `93.37%`.
 - Tests ran under local Python `3.9.6` with compatibility dependencies, while project metadata still targets Python `3.11+`.
 
 ## Next Work
 
 Recommended implementation order:
 
-1. Implement `assess_attempt` skeleton with persisted idempotent assessment records.
-2. Implement confidence measuring from `docs/lld-confidence-measuring.md`.
-3. Implement basic deterministic rubric scoring.
-4. Update learner skill model after assessment with confidence dampening.
-5. Implement next-step decision rules and adaptive lesson handlers.
-6. Expand assignment lifecycle for assessed, abandoned, repeated, and new-variant flows.
-7. Add progress events.
-8. Add `get_progress_summary`.
-9. Add `update_learner_signal`.
-10. Add MCP resources for active profile, progress summary, and curriculum concepts.
-11. Resolve MCP SDK integration and test tool schemas/calls.
-12. Add CLI diagnostics such as `doctor`.
-13. Clean up packaging and setup docs.
+1. Update learner skill model after assessment with confidence dampening.
+2. Implement next-step decision rules and adaptive lesson handlers.
+3. Expand assignment lifecycle for assessed, abandoned, repeated, and new-variant flows.
+4. Add progress events.
+5. Add `get_progress_summary`.
+6. Add `update_learner_signal`.
+7. Add MCP resources for active profile, progress summary, and curriculum concepts.
+8. Resolve MCP SDK integration and test tool schemas/calls.
+9. Add CLI diagnostics such as `doctor`.
+10. Clean up packaging and setup docs.
 
 ## Documents
 
@@ -149,8 +149,7 @@ flowchart LR
 ## Future Work
 
 - Complete the Python MCP server tool surface.
-- Add `assess_attempt` and scoring.
-- Add confidence measuring and skill model updates.
+- Add skill model updates with confidence dampening.
 - Add progress event repositories and summary derivation.
 - Add a `doctor` command for local setup checks.
 - Add Codex setup instructions.
