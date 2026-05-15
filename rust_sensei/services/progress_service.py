@@ -116,6 +116,11 @@ class ProgressService:
             trend=self._trend(assessments),
         )
 
+    def get_active_progress_summary(self) -> GetProgressSummaryResponse:
+        return self.get_progress_summary(
+            GetProgressSummaryRequest(learner_id=ACTIVE_LEARNER_ID)
+        )
+
     def _completed_concepts(
         self,
         profile: LearnerProfile,

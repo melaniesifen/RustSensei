@@ -19,6 +19,7 @@ from rust_sensei.dto.assessment import (
 )
 from rust_sensei.dto.attempt import CommandRunMetadataDTO
 from rust_sensei.dto.lesson import (
+    CurriculumConceptDTO,
     LessonAssignmentDTO,
     LessonCommandDTO,
     LessonPlanDTO,
@@ -177,6 +178,19 @@ def lesson_command_to_dto(command: LessonCommand) -> LessonCommandDTO:
         risk_level=command.risk_level,
         required=command.required,
         allowed_for_agent_verification=command.allowed_for_agent_verification,
+    )
+
+
+def curriculum_concept_to_dto(concept: Concept) -> CurriculumConceptDTO:
+    return CurriculumConceptDTO(
+        concept_id=concept.concept_id,
+        title=concept.title,
+        order=concept.order,
+        default_difficulty=concept.default_difficulty,
+        learner_command=concept.learner_command,
+        rubric_ids=list(concept.rubric_ids),
+        variant_ids=[variant.variant_id for variant in concept.variants],
+        branch_target_ids=sorted(concept.branch_targets),
     )
 
 

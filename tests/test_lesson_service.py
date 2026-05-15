@@ -54,6 +54,33 @@ def test_get_next_lesson_creates_first_assignment_from_placement(tmp_path):
     assert events[0].assignment_id == ASSIGNMENT_ID_1
 
 
+def test_list_curriculum_concepts_returns_ordered_inventory(tmp_path):
+    _, lesson_service, _ = _services(tmp_path)
+
+    response = lesson_service.list_curriculum_concepts()
+
+    assert response.curriculum_version == TEST_CURRICULUM_VERSION
+    assert [concept.concept_id for concept in response.concepts][:2] == [
+        CARGO_HELLO_WORLD_CONCEPT_ID,
+        VARIABLES_CONCEPT_ID,
+    ]
+    variables = response.concepts[1]
+    assert variables.title == "Variables And Primitive Types"
+    assert variables.default_difficulty == "guided"
+    assert variables.learner_command == "cargo run"
+    assert variables.rubric_ids == [
+        "rust_correctness",
+        "rust_idioms",
+        "readability",
+        "compiler_error_handling",
+    ]
+    assert variables.variant_ids == ["guided_001"]
+    assert variables.branch_target_ids == [
+        "compiler_feedback_remediation",
+        "problem_solving_enrichment",
+    ]
+
+
 def test_get_next_lesson_reuses_active_assignment(tmp_path):
     session_service, lesson_service, _ = _services(tmp_path)
     repositories = JsonRepositoryFactory(tmp_path)

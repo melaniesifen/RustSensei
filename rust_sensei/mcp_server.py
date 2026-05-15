@@ -115,6 +115,22 @@ def run(state_dir: Path | None = None) -> None:
             log_boundary_exception(LOGGER, exc)
             return _error_payload(exc)
 
+    @mcp.resource("rust-sensei://progress/summary")
+    def progress_summary() -> dict[str, Any]:
+        try:
+            return progress_service.get_active_progress_summary().model_dump(mode="json")
+        except RustSenseiError as exc:
+            log_boundary_exception(LOGGER, exc)
+            return _error_payload(exc)
+
+    @mcp.resource("rust-sensei://curriculum/concepts")
+    def curriculum_concepts() -> dict[str, Any]:
+        try:
+            return lesson_service.list_curriculum_concepts().model_dump(mode="json")
+        except RustSenseiError as exc:
+            log_boundary_exception(LOGGER, exc)
+            return _error_payload(exc)
+
     @mcp.prompt()
     def rust_sensei_tutor() -> str:
         return TUTOR_PROMPT

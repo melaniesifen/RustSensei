@@ -15,8 +15,16 @@ from rust_sensei.domain.lesson_selection import (
     select_placement_lesson,
 )
 from rust_sensei.domain.progress import ProgressEvent, ProgressEventType
-from rust_sensei.dto.lesson import GetNextLessonRequest, GetNextLessonResponse
-from rust_sensei.dto.mappers import lesson_assignment_to_dto, lesson_plan_to_dto
+from rust_sensei.dto.lesson import (
+    GetNextLessonRequest,
+    GetNextLessonResponse,
+    ListCurriculumConceptsResponse,
+)
+from rust_sensei.dto.mappers import (
+    curriculum_concept_to_dto,
+    lesson_assignment_to_dto,
+    lesson_plan_to_dto,
+)
 from rust_sensei.errors import not_found_error, validation_error
 from rust_sensei.repositories.interfaces import (
     AssessmentRepository,
@@ -152,6 +160,20 @@ class LessonService:
         return self._create_assignment_from_decision(
             request.learner_id,
             decision,
+        )
+
+    def list_curriculum_concepts(self) -> ListCurriculumConceptsResponse:
+        curriculum = self._curriculum_repository.get_curriculum()
+        concepts = sorted(
+            curriculum.concepts.values(),
+            key=lambda concept: concept.order,
+        )
+        return ListCurriculumConceptsResponse(
+            curriculum_version=curriculum.curriculum_version,
+            concepts=[
+                curriculum_concept_to_dto(concept)
+                for concept in concepts
+            ],
         )
 
     def _response_for_assignment(

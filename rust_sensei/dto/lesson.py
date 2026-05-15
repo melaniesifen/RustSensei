@@ -26,6 +26,22 @@ class LessonPlanDTO(StrictDTO):
     rubric_ids: list[str]
 
 
+class CurriculumConceptDTO(StrictDTO):
+    concept_id: str
+    title: str
+    order: int
+    default_difficulty: str
+    learner_command: str | None = None
+    rubric_ids: list[str]
+    variant_ids: list[str]
+    branch_target_ids: list[str] = Field(default_factory=list)
+
+
+class ListCurriculumConceptsResponse(StrictDTO):
+    curriculum_version: str
+    concepts: list[CurriculumConceptDTO]
+
+
 class LessonAssignmentDTO(StrictDTO):
     assignment_id: str
     learner_id: str

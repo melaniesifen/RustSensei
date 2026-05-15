@@ -66,6 +66,17 @@ def test_get_progress_summary_reports_active_assignment_focus(tmp_path):
     assert response.recent_events[0].event_type == "assignment_created"
 
 
+def test_get_active_progress_summary_uses_active_learner(tmp_path):
+    session_service, lesson_service, _, progress_service = _services(tmp_path)
+    session_service.start_session(StartSessionRequest(initial_rust_level=RustLevel.NEW))
+    lesson_service.get_next_lesson(GetNextLessonRequest())
+
+    response = progress_service.get_active_progress_summary()
+
+    assert response.learner_id == TEST_LEARNER_ID
+    assert response.active_concept_id == CARGO_HELLO_WORLD_CONCEPT_ID
+
+
 def test_get_progress_summary_reports_pending_assessment_focus(tmp_path):
     session_service, lesson_service, assessment_service, progress_service = _services(
         tmp_path
