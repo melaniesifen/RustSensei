@@ -748,6 +748,15 @@ def test_curriculum_repository_rejects_invalid_curriculum(tmp_path):
         repository.get_curriculum()
 
 
+def test_curriculum_repository_loads_packaged_seed(tmp_path):
+    repository = JsonRepositoryFactory(tmp_path).curriculum_repository()
+
+    curriculum = repository.get_curriculum()
+
+    assert curriculum.curriculum_version == TEST_CURRICULUM_VERSION
+    assert CARGO_HELLO_WORLD_CONCEPT_ID in curriculum.concepts
+
+
 def _fixed_now():
     return TEST_NOW
 

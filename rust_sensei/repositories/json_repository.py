@@ -4,6 +4,7 @@ import json
 from collections.abc import Callable
 from dataclasses import replace
 from datetime import datetime, timezone
+from importlib import resources
 from pathlib import Path
 from typing import Any
 
@@ -356,23 +357,43 @@ class JsonAssessmentRepository:
         ]
 
 
+CURRICULUM_RESOURCE_PACKAGE = "rust_sensei.resources"
+CURRICULUM_RESOURCE_NAME = "curriculum_seed.json"
+
+
 class JsonCurriculumRepository:
-    def __init__(self, curriculum_path: Path) -> None:
+    def __init__(self, curriculum_path: Path | None = None) -> None:
         self._curriculum_path = curriculum_path
 
     def get_curriculum(self) -> Curriculum:
         try:
-            with self._curriculum_path.open("r", encoding="utf-8") as curriculum_file:
-                return Curriculum.from_dict(json.load(curriculum_file))
+            return Curriculum.from_dict(self._load_curriculum_data())
         except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
             raise storage_error(
                 "Curriculum seed data is invalid",
                 retryable=False,
-                path=str(self._curriculum_path),
+                path=self._curriculum_source_label(),
             ) from exc
 
     def get_concept(self, concept_id: str) -> Concept | None:
         return self.get_curriculum().concepts.get(concept_id)
+
+    def _load_curriculum_data(self) -> dict[str, Any]:
+        if self._curriculum_path is not None:
+            with self._curriculum_path.open("r", encoding="utf-8") as curriculum_file:
+                return json.load(curriculum_file)
+
+        return json.loads(
+            resources.files(CURRICULUM_RESOURCE_PACKAGE)
+            .joinpath(CURRICULUM_RESOURCE_NAME)
+            .read_text(encoding="utf-8")
+        )
+
+    def _curriculum_source_label(self) -> str:
+        if self._curriculum_path is not None:
+            return str(self._curriculum_path)
+
+        return f"{CURRICULUM_RESOURCE_PACKAGE}/{CURRICULUM_RESOURCE_NAME}"
 
 
 class JsonProgressEventRepository:
@@ -434,9 +455,7 @@ class JsonRepositoryFactory:
     def __init__(self, state_dir: Path, curriculum_path: Path | None = None) -> None:
         self._state_dir = state_dir
         self._state_store = JsonStateStore(self._state_dir / STATE_FILE_NAME)
-        self._curriculum_path = curriculum_path or (
-            Path(__file__).resolve().parent.parent / "resources" / "curriculum_seed.json"
-        )
+        self._curriculum_path = curriculum_path
 
     def learner_repository(self) -> JsonLearnerRepository:
         return JsonLearnerRepository(self._state_store)
