@@ -26,7 +26,11 @@ from rust_sensei.dto.setup import GetSetupStatusRequest
 from rust_sensei.errors import RustSenseiError
 from rust_sensei.factory import ServiceFactory
 from rust_sensei.logging_config import log_boundary_exception
-from rust_sensei.prompts.tutor_prompts import TUTOR_PROMPT
+from rust_sensei.prompts.tutor_prompts import (
+    ATTEMPT_REVIEW_PROMPT,
+    STUCK_COACHING_PROMPT,
+    TUTOR_PROMPT,
+)
 
 LOGGER = logging.getLogger(__name__)
 Handler = TypeVar("Handler", bound=Callable[..., Any])
@@ -158,6 +162,14 @@ def register_handlers(mcp: MCPRegistrar, services: ServiceFactory) -> None:
     @mcp.prompt()
     def rust_sensei_tutor() -> str:
         return TUTOR_PROMPT
+
+    @mcp.prompt()
+    def rust_sensei_attempt_review() -> str:
+        return ATTEMPT_REVIEW_PROMPT
+
+    @mcp.prompt()
+    def rust_sensei_stuck_coaching() -> str:
+        return STUCK_COACHING_PROMPT
 
 
 def _error_payload(exc: Exception) -> dict[str, Any]:

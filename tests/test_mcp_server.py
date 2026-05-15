@@ -35,7 +35,11 @@ def test_register_handlers_exposes_expected_mcp_surface(tmp_path):
         MCP_PROFILE_ACTIVE_RESOURCE_URI,
         MCP_PROGRESS_SUMMARY_RESOURCE_URI,
     ]
-    assert sorted(mcp.prompts) == ["rust_sensei_tutor"]
+    assert sorted(mcp.prompts) == [
+        "rust_sensei_attempt_review",
+        "rust_sensei_stuck_coaching",
+        "rust_sensei_tutor",
+    ]
 
 
 def test_registered_tools_validate_payload_and_return_json_payloads(tmp_path):
@@ -127,13 +131,17 @@ def test_registered_resources_return_json_payloads(tmp_path):
     assert len(curriculum["concepts"]) > 0
 
 
-def test_registered_prompt_returns_tutor_prompt(tmp_path):
+def test_registered_prompts_return_prompt_text(tmp_path):
     mcp = _FakeMCP()
     register_handlers(mcp, ServiceFactory(state_dir=tmp_path))
 
-    prompt = mcp.prompts["rust_sensei_tutor"]()
+    tutor_prompt = mcp.prompts["rust_sensei_tutor"]()
+    attempt_review_prompt = mcp.prompts["rust_sensei_attempt_review"]()
+    stuck_coaching_prompt = mcp.prompts["rust_sensei_stuck_coaching"]()
 
-    assert "Rust Sensei" in prompt
+    assert "Rust Sensei" in tutor_prompt
+    assert "assess_attempt output" in attempt_review_prompt
+    assert "update_learner_signal" in stuck_coaching_prompt
 
 
 class _FakeMCP:
