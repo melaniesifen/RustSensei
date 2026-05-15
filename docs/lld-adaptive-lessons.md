@@ -88,6 +88,13 @@ class ConceptSpec:
 
 
 @dataclass
+class CurriculumSpec:
+    curriculum_version: str
+    branch_fallbacks: dict[str, list[str]]
+    concepts: list[ConceptSpec]
+
+
+@dataclass
 class LessonSelectionDecision:
     lesson_id: str
     concept_id: str
@@ -101,71 +108,80 @@ class LessonSelectionDecision:
 
 `LessonSelectionDecision` is an internal pre-assignment object. The MCP server maps it to the persisted `LessonAssignment`, which owns assignment status, timestamps, curriculum version, and learner id.
 
-### 4.2 Example Concept Spec
+### 4.2 Example Curriculum Spec
 
 ```json
 {
-  "concept_id": "variables_primitive_types",
-  "title": "Variables And Primitive Types",
-  "order": 20,
-  "prerequisites": ["cargo_hello_world"],
-  "default_difficulty": "guided",
-  "competency_goals": [
-    "Declare immutable variables",
-    "Use string, integer, float, boolean, and char values",
-    "Print values with println!",
-    "Recognize type inference"
-  ],
-  "baseline_task": "Create and print 3 variables with different primitive types.",
-  "learner_command": "cargo run",
-  "stretch_signals": [
-    "Uses meaningful variable names",
-    "Adds more than 3 appropriate types",
-    "Explains inferred types correctly",
-    "Keeps output readable"
-  ],
-  "struggle_signals": [
-    "Cannot compile a basic variable declaration",
-    "Confuses string literals and String",
-    "Uses unclear names",
-    "Does not run cargo command"
-  ],
-  "rubric_ids": [
-    "rust_correctness",
-    "rust_idioms",
-    "readability",
-    "compiler_error_handling"
-  ],
-  "next_concepts": ["mutability_shadowing"],
-  "branch_targets": {
-    "compiler_feedback_remediation": ["compiler_errors_basic"],
-    "problem_solving_enrichment": ["variables_small_problem"]
+  "curriculum_version": "0.1.0",
+  "branch_fallbacks": {
+    "compiler_feedback_remediation": ["cargo_hello_world"],
+    "problem_solving_enrichment": ["traits_generics_testing"]
   },
-  "completion_thresholds": {
-    "rust_correctness": 0.70,
-    "rust_idioms": 0.60,
-    "readability": 0.60
-  },
-  "variants": [
+  "concepts": [
     {
-      "variant_id": "variables_primitive_types_guided_001",
-      "difficulty": "guided",
-      "prompt_template": "Create and print 3 variables with different primitive types.",
-      "success_criteria": [
-        "Program compiles with cargo run",
-        "At least 3 primitive values are declared and printed"
+      "concept_id": "variables_primitive_types",
+      "title": "Variables And Primitive Types",
+      "order": 20,
+      "prerequisites": ["cargo_hello_world"],
+      "default_difficulty": "guided",
+      "competency_goals": [
+        "Declare immutable variables",
+        "Use string, integer, float, boolean, and char values",
+        "Print values with println!",
+        "Recognize type inference"
       ],
-      "hints": [
-        "Start with immutable let bindings",
-        "Use println! for each value"
+      "baseline_task": "Create and print 3 variables with different primitive types.",
+      "learner_command": "cargo run",
+      "stretch_signals": [
+        "Uses meaningful variable names",
+        "Adds more than 3 appropriate types",
+        "Explains inferred types correctly",
+        "Keeps output readable"
       ],
-      "lesson_commands": [
+      "struggle_signals": [
+        "Cannot compile a basic variable declaration",
+        "Confuses string literals and String",
+        "Uses unclear names",
+        "Does not run cargo command"
+      ],
+      "rubric_ids": [
+        "rust_correctness",
+        "rust_idioms",
+        "readability",
+        "compiler_error_handling"
+      ],
+      "next_concepts": ["mutability_shadowing"],
+      "branch_targets": {
+        "compiler_feedback_remediation": ["compiler_errors_basic"],
+        "problem_solving_enrichment": ["variables_small_problem"]
+      },
+      "completion_thresholds": {
+        "rust_correctness": 0.70,
+        "rust_idioms": 0.60,
+        "readability": 0.60
+      },
+      "variants": [
         {
-          "command": "cargo run",
-          "purpose": "Run the learner's program",
-          "risk_level": "low",
-          "required": true,
-          "allowed_for_agent_verification": true
+          "variant_id": "variables_primitive_types_guided_001",
+          "difficulty": "guided",
+          "prompt_template": "Create and print 3 variables with different primitive types.",
+          "success_criteria": [
+            "Program compiles with cargo run",
+            "At least 3 primitive values are declared and printed"
+          ],
+          "hints": [
+            "Start with immutable let bindings",
+            "Use println! for each value"
+          ],
+          "lesson_commands": [
+            {
+              "command": "cargo run",
+              "purpose": "Run the learner's program",
+              "risk_level": "low",
+              "required": true,
+              "allowed_for_agent_verification": true
+            }
+          ]
         }
       ]
     }
@@ -342,7 +358,7 @@ Branch target semantics:
 - Branch rules must satisfy the confidence gating policy before returning `branch`; lower-confidence remediation should use `repeat` or `simplify`.
 - The assessment result must persist the selected `branch_id` and next-action reason.
 - `select_branch_lesson` resolves the branch by looking up `concept.branch_targets[branch_id]`.
-- If the current concept does not define the selected `branch_id`, `select_branch_lesson` uses a configured global branch fallback for that `branch_id`.
+- If the current concept does not define the selected `branch_id`, `select_branch_lesson` uses `curriculum.branch_fallbacks[branch_id]` when configured.
 - If no concept branch target or global fallback exists, the selector falls back to `repeat` and records an explicit rationale.
 - Branches may be remediation, enrichment, or temporary alternate paths. The branch id defines the branch purpose.
 
