@@ -851,7 +851,7 @@ def get_learner_profile(payload: dict) -> dict:
 def get_progress_summary(payload: dict) -> dict:
     """Return the learner's progress summary."""
     request = GetProgressSummaryRequest.model_validate(payload)
-    return lesson_service.get_progress_summary(request).model_dump()
+    return progress_service.get_progress_summary(request).model_dump()
 
 
 @mcp.tool()
@@ -877,7 +877,7 @@ def active_profile() -> dict:
 @mcp.resource("rust-sensei://progress/summary")
 def progress_summary() -> dict:
     """Return derived learner progress."""
-    return lesson_service.get_progress_summary().model_dump()
+    return progress_service.get_active_progress_summary().model_dump()
 
 
 @mcp.resource("rust-sensei://curriculum/concepts")

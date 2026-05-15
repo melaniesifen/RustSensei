@@ -45,11 +45,16 @@ Implemented MCP tools in code:
 - `update_learner_signal`
 - `get_setup_status`
 
+Implemented MCP resources in code:
+
+- `rust-sensei://profile/active`
+- `rust-sensei://progress/summary`
+- `rust-sensei://curriculum/concepts`
+
 Known limitations:
 
 - The MCP boundary is not integration-tested because the `mcp` package is not available from the current local package index.
 - MCP tools currently use a `payload` wrapper pending SDK schema verification. This should be resolved before treating the MCP contract as stable.
-- Progress summary MCP resources are not implemented.
 - `force_new_variant` is supported only with `abandon_active_assignment` while an active assignment exists.
 - `assess_attempt` uses deterministic scoring only. It does not call an LLM.
 - v1 still supports only `local-default` as the learner id.
@@ -99,8 +104,8 @@ Open `htmlcov/index.html` in a browser to inspect file-by-file coverage. The `ht
 
 Latest known verification:
 
-- `111` tests passed.
-- Coverage passed at `94.05%`.
+- `113` tests passed.
+- Coverage passed at `94.10%`.
 - Tests ran under local Python `3.9.6` with compatibility dependencies, while project metadata targets Python `3.11+`. Treat the `3.9.6` run as incidental compatibility coverage, not the supported runtime.
 
 ## Next Work
@@ -109,9 +114,8 @@ Recommended implementation order:
 
 1. Resolve MCP SDK integration and test tool schemas/calls, including the `payload` wrapper decision.
 2. Verify the full test suite under supported Python `3.11+` and clean up setup docs around unsupported Python versions.
-3. Add MCP resources for progress summary and curriculum concepts.
-4. Add CLI diagnostics such as `doctor`.
-5. Clean up packaging and setup docs.
+3. Add CLI diagnostics such as `doctor`.
+4. Clean up packaging and setup docs.
 
 ## Documents
 
