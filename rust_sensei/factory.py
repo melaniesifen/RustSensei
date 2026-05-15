@@ -28,6 +28,7 @@ class ServiceFactory:
     def session_service(self) -> SessionService:
         return SessionService(
             learner_repository=self._repositories.learner_repository(),
+            learner_signal_repository=self._repositories.learner_signal_repository(),
             now=self._now,
         )
 

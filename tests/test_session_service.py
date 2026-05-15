@@ -2,8 +2,12 @@ from datetime import datetime, timezone
 
 import pytest
 
-from rust_sensei.domain.enums import RustLevel
-from rust_sensei.dto.session import GetLearnerProfileRequest, StartSessionRequest
+from rust_sensei.domain.enums import LearnerSignalType, RustLevel
+from rust_sensei.dto.session import (
+    GetLearnerProfileRequest,
+    StartSessionRequest,
+    UpdateLearnerSignalRequest,
+)
 from rust_sensei.errors import NotFoundError, ValidationError
 from rust_sensei.repositories.json_repository import JsonRepositoryFactory
 from rust_sensei.services.session_service import SessionService
@@ -79,9 +83,64 @@ def test_unsupported_learner_id_is_rejected(tmp_path):
         service.start_session(StartSessionRequest(learner_id="someone-else"))
 
 
+def test_update_learner_signal_records_signal(tmp_path):
+    repositories = JsonRepositoryFactory(tmp_path)
+    service = _session_service_from_repositories(repositories)
+    service.start_session(StartSessionRequest(initial_rust_level=RustLevel.NEW))
+
+    response = service.update_learner_signal(
+        UpdateLearnerSignalRequest(
+            signal_type=LearnerSignalType.CONFUSION,
+            value=True,
+            notes="Borrow checker error is confusing.",
+        )
+    )
+
+    signals = repositories.learner_signal_repository().list_recent_signals(
+        "local-default",
+        limit=5,
+    )
+    assert response.signal_id == "signal_000001"
+    assert response.recorded is True
+    assert signals[0].signal_type == LearnerSignalType.CONFUSION
+    assert signals[0].value is True
+    assert signals[0].notes == "Borrow checker error is confusing."
+
+
+def test_update_learner_signal_requires_existing_profile(tmp_path):
+    service = _session_service(tmp_path)
+
+    with pytest.raises(NotFoundError):
+        service.update_learner_signal(
+            UpdateLearnerSignalRequest(
+                signal_type=LearnerSignalType.CONFIDENCE,
+                value=0.25,
+            )
+        )
+
+
+def test_update_learner_signal_rejects_blank_string_value(tmp_path):
+    service = _session_service(tmp_path)
+    service.start_session(StartSessionRequest(initial_rust_level=RustLevel.NEW))
+
+    with pytest.raises(ValidationError):
+        service.update_learner_signal(
+            UpdateLearnerSignalRequest(
+                signal_type=LearnerSignalType.BLOCKER,
+                value=" ",
+            )
+        )
+
+
 def _session_service(tmp_path) -> SessionService:
-    repository = JsonRepositoryFactory(tmp_path).learner_repository()
+    return _session_service_from_repositories(JsonRepositoryFactory(tmp_path))
+
+
+def _session_service_from_repositories(
+    repositories: JsonRepositoryFactory,
+) -> SessionService:
     return SessionService(
-        learner_repository=repository,
+        learner_repository=repositories.learner_repository(),
+        learner_signal_repository=repositories.learner_signal_repository(),
         now=lambda: datetime(2026, 5, 10, tzinfo=timezone.utc),
     )

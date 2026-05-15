@@ -9,6 +9,7 @@ from rust_sensei.domain.curriculum import Concept, Curriculum
 from rust_sensei.domain.learner import LearnerProfile
 from rust_sensei.domain.lesson import LessonAssignment
 from rust_sensei.domain.progress import ProgressEvent
+from rust_sensei.domain.signal import LearnerSignal
 
 
 class LearnerRepository(Protocol):
@@ -151,4 +152,16 @@ class ProgressEventRepository(Protocol):
         self,
         learner_id: str,
     ) -> list[ProgressEvent]:
+        ...
+
+
+class LearnerSignalRepository(Protocol):
+    def save_signal(self, signal: LearnerSignal) -> LearnerSignal:
+        ...
+
+    def list_recent_signals(
+        self,
+        learner_id: str,
+        limit: int,
+    ) -> list[LearnerSignal]:
         ...

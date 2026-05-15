@@ -3,6 +3,7 @@ from __future__ import annotations
 from pydantic import Field
 
 from rust_sensei.constants import ACTIVE_LEARNER_ID
+from rust_sensei.domain.enums import LearnerSignalType
 from rust_sensei.dto.common import RustLevel, StrictDTO
 
 
@@ -38,3 +39,15 @@ class GetLearnerProfileRequest(StrictDTO):
 class GetLearnerProfileResponse(StrictDTO):
     profile: LearnerProfileDTO
     skill_model: dict[str, dict[str, SkillScoreDTO]]
+
+
+class UpdateLearnerSignalRequest(StrictDTO):
+    learner_id: str = ACTIVE_LEARNER_ID
+    signal_type: LearnerSignalType
+    value: str | float | bool
+    notes: str | None = None
+
+
+class UpdateLearnerSignalResponse(StrictDTO):
+    signal_id: str
+    recorded: bool

@@ -167,6 +167,7 @@ def test_get_progress_summary_derives_skipped_concepts_from_all_events(tmp_path)
     repositories = JsonRepositoryFactory(tmp_path)
     session_service = SessionService(
         learner_repository=repositories.learner_repository(),
+        learner_signal_repository=repositories.learner_signal_repository(),
         now=lambda: TEST_NOW,
     )
     progress_service = _progress_service(repositories)
@@ -201,6 +202,7 @@ def _services(tmp_path):
     return (
         SessionService(
             learner_repository=repositories.learner_repository(),
+            learner_signal_repository=repositories.learner_signal_repository(),
             now=now,
         ),
         LessonService(

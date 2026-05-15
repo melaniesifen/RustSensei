@@ -16,10 +16,16 @@ from rust_sensei.domain.assessment import (
 )
 from rust_sensei.domain.attempt import AttemptSubmission, CommandRunMetadata
 from rust_sensei.domain.curriculum import Concept, Curriculum
-from rust_sensei.domain.enums import AssignmentStatus, NextAction, RustLevel
+from rust_sensei.domain.enums import (
+    AssignmentStatus,
+    LearnerSignalType,
+    NextAction,
+    RustLevel,
+)
 from rust_sensei.domain.learner import LearnerProfile
 from rust_sensei.domain.lesson import LessonAssignment
 from rust_sensei.domain.progress import ProgressEvent, ProgressEventType
+from rust_sensei.domain.signal import LearnerSignal
 from rust_sensei.domain.skill import SkillModel, SkillScore
 from rust_sensei.errors import idempotency_conflict_error, storage_error
 from rust_sensei.repositories.json_state import JsonStateStore
@@ -398,6 +404,32 @@ class JsonProgressEventRepository:
         ]
 
 
+class JsonLearnerSignalRepository:
+    def __init__(self, store: JsonStateStore) -> None:
+        self._store = store
+
+    def save_signal(self, signal: LearnerSignal) -> LearnerSignal:
+        def transaction(state: dict[str, Any]) -> tuple[LearnerSignal, bool]:
+            created = replace(signal, signal_id=_next_signal_id(state))
+            state["signals"].append(_signal_to_state(created))
+            return created, True
+
+        return self._store.transact(transaction)
+
+    def list_recent_signals(
+        self,
+        learner_id: str,
+        limit: int,
+    ) -> list[LearnerSignal]:
+        state = self._store.read()
+        signals = [
+            _signal_from_state(item)
+            for item in reversed(state["signals"])
+            if item["learner_id"] == learner_id
+        ]
+        return signals[:limit]
+
+
 class JsonRepositoryFactory:
     def __init__(self, state_dir: Path, curriculum_path: Path | None = None) -> None:
         self._state_dir = state_dir
@@ -423,6 +455,9 @@ class JsonRepositoryFactory:
 
     def progress_event_repository(self) -> JsonProgressEventRepository:
         return JsonProgressEventRepository(self._state_store)
+
+    def learner_signal_repository(self) -> JsonLearnerSignalRepository:
+        return JsonLearnerSignalRepository(self._state_store)
 
 
 def default_state_dir() -> Path:
@@ -530,6 +565,11 @@ def _next_assessment_id(state: dict[str, Any]) -> str:
 def _next_progress_event_id(state: dict[str, Any]) -> str:
     next_number = len(state["progress_events"]) + 1
     return f"event_{next_number:06d}"
+
+
+def _next_signal_id(state: dict[str, Any]) -> str:
+    next_number = len(state["signals"]) + 1
+    return f"signal_{next_number:06d}"
 
 
 def _attempt_from_state(data: dict[str, Any]) -> AttemptSubmission:
@@ -841,6 +881,28 @@ def _append_progress_event(
     )
     state["progress_events"].append(_progress_event_to_state(created))
     return created
+
+
+def _signal_from_state(data: dict[str, Any]) -> LearnerSignal:
+    return LearnerSignal(
+        signal_id=data["signal_id"],
+        learner_id=data["learner_id"],
+        signal_type=LearnerSignalType(data["signal_type"]),
+        value=data["value"],
+        notes=data.get("notes"),
+        created_at=_parse_datetime(data["created_at"]),
+    )
+
+
+def _signal_to_state(signal: LearnerSignal) -> dict[str, Any]:
+    return {
+        "signal_id": signal.signal_id,
+        "learner_id": signal.learner_id,
+        "signal_type": signal.signal_type.value,
+        "value": signal.value,
+        "notes": signal.notes,
+        "created_at": _format_datetime(signal.created_at),
+    }
 
 
 def _active_assignment_from_state(

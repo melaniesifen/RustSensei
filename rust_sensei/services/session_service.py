@@ -7,6 +7,7 @@ from datetime import datetime
 from rust_sensei.constants import ACTIVE_LEARNER_ID, ALLOWED_RUST_LEVELS
 from rust_sensei.domain.learner import LearnerProfile
 from rust_sensei.domain.placement import starting_concept_for_level
+from rust_sensei.domain.signal import LearnerSignal
 from rust_sensei.domain.skill import SkillModel
 from rust_sensei.dto.mappers import learner_profile_to_dto, skill_model_to_dto
 from rust_sensei.dto.session import (
@@ -14,9 +15,14 @@ from rust_sensei.dto.session import (
     GetLearnerProfileResponse,
     StartSessionRequest,
     StartSessionResponse,
+    UpdateLearnerSignalRequest,
+    UpdateLearnerSignalResponse,
 )
 from rust_sensei.errors import not_found_error, validation_error
-from rust_sensei.repositories.interfaces import LearnerRepository
+from rust_sensei.repositories.interfaces import (
+    LearnerRepository,
+    LearnerSignalRepository,
+)
 
 LOGGER = logging.getLogger(__name__)
 
@@ -25,9 +31,11 @@ class SessionService:
     def __init__(
         self,
         learner_repository: LearnerRepository,
+        learner_signal_repository: LearnerSignalRepository,
         now: Callable[[], datetime],
     ) -> None:
         self._learner_repository = learner_repository
+        self._learner_signal_repository = learner_signal_repository
         self._now = now
 
     def start_session(self, request: StartSessionRequest) -> StartSessionResponse:
@@ -86,6 +94,42 @@ class SessionService:
     def get_active_profile(self) -> GetLearnerProfileResponse:
         return self.get_learner_profile(
             GetLearnerProfileRequest(learner_id=ACTIVE_LEARNER_ID)
+        )
+
+    def update_learner_signal(
+        self,
+        request: UpdateLearnerSignalRequest,
+    ) -> UpdateLearnerSignalResponse:
+        self._validate_active_learner(request.learner_id)
+        if self._learner_repository.get_profile(request.learner_id) is None:
+            raise not_found_error(
+                "Learner profile was not found",
+                learner_id=request.learner_id,
+            )
+        if isinstance(request.value, str) and not request.value.strip():
+            raise validation_error("signal value must not be blank", field="value")
+        if request.notes is not None and not request.notes.strip():
+            raise validation_error("signal notes must not be blank", field="notes")
+
+        saved = self._learner_signal_repository.save_signal(
+            LearnerSignal(
+                signal_id="",
+                learner_id=request.learner_id,
+                signal_type=request.signal_type,
+                value=request.value,
+                notes=request.notes,
+                created_at=self._now(),
+            )
+        )
+        LOGGER.info(
+            "Recorded learner signal signal_id=%s learner_id=%s signal_type=%s",
+            saved.signal_id,
+            saved.learner_id,
+            saved.signal_type.value,
+        )
+        return UpdateLearnerSignalResponse(
+            signal_id=saved.signal_id,
+            recorded=True,
         )
 
     def _create_profile(self, request: StartSessionRequest) -> LearnerProfile:

@@ -10,7 +10,11 @@ from rust_sensei.dto.assessment import AssessAttemptRequest
 from rust_sensei.dto.attempt import SubmitAttemptRequest
 from rust_sensei.dto.lesson import GetNextLessonRequest
 from rust_sensei.dto.progress import GetProgressSummaryRequest
-from rust_sensei.dto.session import GetLearnerProfileRequest, StartSessionRequest
+from rust_sensei.dto.session import (
+    GetLearnerProfileRequest,
+    StartSessionRequest,
+    UpdateLearnerSignalRequest,
+)
 from rust_sensei.dto.setup import GetSetupStatusRequest
 from rust_sensei.errors import RustSenseiError
 from rust_sensei.factory import ServiceFactory
@@ -81,6 +85,15 @@ def run(state_dir: Path | None = None) -> None:
         try:
             request = GetProgressSummaryRequest.model_validate(payload)
             return progress_service.get_progress_summary(request).model_dump(mode="json")
+        except (RustSenseiError, PydanticValidationError) as exc:
+            log_boundary_exception(LOGGER, exc)
+            return _error_payload(exc)
+
+    @mcp.tool()
+    def update_learner_signal(payload: dict[str, Any]) -> dict[str, Any]:
+        try:
+            request = UpdateLearnerSignalRequest.model_validate(payload)
+            return session_service.update_learner_signal(request).model_dump(mode="json")
         except (RustSenseiError, PydanticValidationError) as exc:
             log_boundary_exception(LOGGER, exc)
             return _error_payload(exc)

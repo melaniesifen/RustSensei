@@ -36,3 +36,13 @@ class NextAction(str, Enum):
     CONTINUE = "continue"
     ACCELERATE = "accelerate"
     BRANCH = "branch"
+
+
+class LearnerSignalType(str, Enum):
+    CONFUSION = "confusion"
+    CONFIDENCE = "confidence"
+    BLOCKER = "blocker"
+    PACING = "pacing"
+    TOO_EASY = "too_easy"
+    TOO_HARD = "too_hard"
+    BOREDOM = "boredom"

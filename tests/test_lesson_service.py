@@ -254,6 +254,7 @@ def _services(tmp_path):
     return (
         SessionService(
             learner_repository=repositories.learner_repository(),
+            learner_signal_repository=repositories.learner_signal_repository(),
             now=now,
         ),
         LessonService(

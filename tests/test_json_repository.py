@@ -11,9 +11,16 @@ from rust_sensei.domain.assessment import (
     ConfidenceBreakdown,
 )
 from rust_sensei.domain.attempt import AttemptSubmission
-from rust_sensei.domain.enums import AssignmentStatus, Difficulty, NextAction, RustLevel
+from rust_sensei.domain.enums import (
+    AssignmentStatus,
+    Difficulty,
+    LearnerSignalType,
+    NextAction,
+    RustLevel,
+)
 from rust_sensei.domain.learner import LearnerProfile
 from rust_sensei.domain.progress import ProgressEvent, ProgressEventType
+from rust_sensei.domain.signal import LearnerSignal
 from rust_sensei.domain.skill import SkillModel, SkillScore
 from rust_sensei.dto.session import StartSessionRequest
 from rust_sensei.errors import IdempotencyConflictError, StorageError
@@ -30,8 +37,10 @@ from tests.constants import (
 
 
 def test_json_repository_creates_expected_state_shape(tmp_path):
+    repositories = JsonRepositoryFactory(tmp_path)
     service = SessionService(
-        learner_repository=JsonRepositoryFactory(tmp_path).learner_repository(),
+        learner_repository=repositories.learner_repository(),
+        learner_signal_repository=repositories.learner_signal_repository(),
         now=_fixed_now,
     )
 
@@ -574,6 +583,28 @@ def test_progress_event_repository_saves_and_lists_recent_events(tmp_path):
     assert events == [second]
 
 
+def test_learner_signal_repository_saves_and_lists_recent_signals(tmp_path):
+    repository = JsonRepositoryFactory(tmp_path).learner_signal_repository()
+    first = repository.save_signal(
+        _signal(
+            signal_type=LearnerSignalType.CONFUSION,
+            value=True,
+        )
+    )
+    second = repository.save_signal(
+        _signal(
+            signal_type=LearnerSignalType.CONFIDENCE,
+            value=0.25,
+        )
+    )
+
+    signals = repository.list_recent_signals(TEST_LEARNER_ID, limit=1)
+
+    assert first.signal_id == "signal_000001"
+    assert second.signal_id == "signal_000002"
+    assert signals == [second]
+
+
 def test_assignment_create_rolls_back_when_progress_event_creation_fails(tmp_path):
     repositories = JsonRepositoryFactory(tmp_path)
 
@@ -819,6 +850,20 @@ def _progress_event(
         details={"source": "test"},
         previous_status=None,
         new_status=AssignmentStatus.ACTIVE.value,
+        created_at=TEST_NOW,
+    )
+
+
+def _signal(
+    signal_type: LearnerSignalType,
+    value: str | float | bool,
+) -> LearnerSignal:
+    return LearnerSignal(
+        signal_id="",
+        learner_id=TEST_LEARNER_ID,
+        signal_type=signal_type,
+        value=value,
+        notes="test signal",
         created_at=TEST_NOW,
     )
 
