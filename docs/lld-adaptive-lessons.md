@@ -385,6 +385,8 @@ Lesson selection uses persisted assignment history.
 - Each assignment includes `assignment_id`, `lesson_id`, `concept_id`, `difficulty`, `variant_id`, `selection_rationale`, and `curriculum_version`.
 - Variant selection must be deterministic from stable inputs such as learner id, concept id, difficulty, curriculum version, and repeat count.
 - The same `variant_id` should not be assigned more than 2 times in a row for the same concept and difficulty.
+- Current implementation selects the first unused variant for the target concept and difficulty from the learner's prior assignments.
+- If all matching variants have been used, current implementation falls back to the first matching variant.
 
 Variant exhaustion behavior:
 
