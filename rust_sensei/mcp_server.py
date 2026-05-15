@@ -1,11 +1,18 @@
 from __future__ import annotations
 
 import logging
+from collections.abc import Callable
 from pathlib import Path
-from typing import Any
+from typing import Any, Protocol, TypeVar
 
 from pydantic import ValidationError as PydanticValidationError
 
+from rust_sensei.constants import (
+    MCP_CURRICULUM_CONCEPTS_RESOURCE_URI,
+    MCP_PROFILE_ACTIVE_RESOURCE_URI,
+    MCP_PROGRESS_SUMMARY_RESOURCE_URI,
+    MCP_SERVER_NAME,
+)
 from rust_sensei.dto.assessment import AssessAttemptRequest
 from rust_sensei.dto.attempt import SubmitAttemptRequest
 from rust_sensei.dto.lesson import GetNextLessonRequest
@@ -22,18 +29,35 @@ from rust_sensei.logging_config import log_boundary_exception
 from rust_sensei.prompts.tutor_prompts import TUTOR_PROMPT
 
 LOGGER = logging.getLogger(__name__)
+Handler = TypeVar("Handler", bound=Callable[..., Any])
+
+
+class MCPRegistrar(Protocol):
+    def tool(self) -> Callable[[Handler], Handler]:
+        ...
+
+    def resource(self, uri: str) -> Callable[[Handler], Handler]:
+        ...
+
+    def prompt(self) -> Callable[[Handler], Handler]:
+        ...
 
 
 def run(state_dir: Path | None = None) -> None:
     from mcp.server.fastmcp import FastMCP
 
     services = ServiceFactory(state_dir=state_dir)
+    mcp = FastMCP(MCP_SERVER_NAME)
+    register_handlers(mcp, services)
+    mcp.run()
+
+
+def register_handlers(mcp: MCPRegistrar, services: ServiceFactory) -> None:
     session_service = services.session_service()
     lesson_service = services.lesson_service()
     assessment_service = services.assessment_service()
     progress_service = services.progress_service()
     setup_service = services.setup_service()
-    mcp = FastMCP("rust-sensei")
 
     @mcp.tool()
     def start_session(payload: dict[str, Any]) -> dict[str, Any]:
@@ -107,7 +131,7 @@ def run(state_dir: Path | None = None) -> None:
             log_boundary_exception(LOGGER, exc)
             return _error_payload(exc)
 
-    @mcp.resource("rust-sensei://profile/active")
+    @mcp.resource(MCP_PROFILE_ACTIVE_RESOURCE_URI)
     def active_profile() -> dict[str, Any]:
         try:
             return session_service.get_active_profile().model_dump(mode="json")
@@ -115,7 +139,7 @@ def run(state_dir: Path | None = None) -> None:
             log_boundary_exception(LOGGER, exc)
             return _error_payload(exc)
 
-    @mcp.resource("rust-sensei://progress/summary")
+    @mcp.resource(MCP_PROGRESS_SUMMARY_RESOURCE_URI)
     def progress_summary() -> dict[str, Any]:
         try:
             return progress_service.get_active_progress_summary().model_dump(mode="json")
@@ -123,7 +147,7 @@ def run(state_dir: Path | None = None) -> None:
             log_boundary_exception(LOGGER, exc)
             return _error_payload(exc)
 
-    @mcp.resource("rust-sensei://curriculum/concepts")
+    @mcp.resource(MCP_CURRICULUM_CONCEPTS_RESOURCE_URI)
     def curriculum_concepts() -> dict[str, Any]:
         try:
             return lesson_service.list_curriculum_concepts().model_dump(mode="json")
@@ -134,8 +158,6 @@ def run(state_dir: Path | None = None) -> None:
     @mcp.prompt()
     def rust_sensei_tutor() -> str:
         return TUTOR_PROMPT
-
-    mcp.run()
 
 
 def _error_payload(exc: Exception) -> dict[str, Any]:
