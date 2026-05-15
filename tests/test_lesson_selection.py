@@ -48,7 +48,7 @@ def test_lesson_selector_repeats_for_unknown_action():
     assert decision.variant.variant_id == "standard_001"
 
 
-def test_lesson_selector_branch_falls_back_to_repeat():
+def test_lesson_selector_resolves_concept_branch_target():
     selector = default_lesson_selector()
     curriculum = _curriculum()
 
@@ -56,12 +56,57 @@ def test_lesson_selector_branch_falls_back_to_repeat():
         LessonSelectionContext(
             curriculum=curriculum,
             last_assignment=_assignment("concept_1", Difficulty.STANDARD, "standard_001"),
-            last_assessment=_assessment(NextAction.BRANCH),
+            last_assessment=_assessment(
+                NextAction.BRANCH,
+                branch_id="targeted_remediation",
+            ),
+        )
+    )
+
+    assert decision.concept.concept_id == "concept_2"
+    assert decision.variant.variant_id == "challenge_001"
+    assert decision.branch_id == "targeted_remediation"
+    assert decision.selection_rationale.startswith("Selected branch target")
+
+
+def test_lesson_selector_resolves_global_branch_fallback():
+    selector = default_lesson_selector()
+    curriculum = _curriculum()
+
+    decision = selector.select_next_lesson(
+        LessonSelectionContext(
+            curriculum=curriculum,
+            last_assignment=_assignment("concept_2", Difficulty.CHALLENGE, "challenge_001"),
+            last_assessment=_assessment(
+                NextAction.BRANCH,
+                branch_id="global_remediation",
+            ),
         )
     )
 
     assert decision.concept.concept_id == "concept_1"
     assert decision.variant.variant_id == "standard_001"
+    assert decision.branch_id == "global_remediation"
+
+
+def test_lesson_selector_branch_falls_back_to_repeat_without_target():
+    selector = default_lesson_selector()
+    curriculum = _curriculum()
+
+    decision = selector.select_next_lesson(
+        LessonSelectionContext(
+            curriculum=curriculum,
+            last_assignment=_assignment("concept_1", Difficulty.STANDARD, "standard_001"),
+            last_assessment=_assessment(
+                NextAction.BRANCH,
+                branch_id="missing_branch",
+            ),
+        )
+    )
+
+    assert decision.concept.concept_id == "concept_1"
+    assert decision.variant.variant_id == "standard_001"
+    assert decision.branch_id == "missing_branch"
     assert decision.selection_rationale.startswith("Branch action fell back to repeat")
 
 
@@ -89,6 +134,7 @@ def _curriculum() -> Curriculum:
         default_difficulty=Difficulty.STANDARD,
         learner_command=None,
         rubric_ids=["rust_correctness"],
+        branch_targets={"targeted_remediation": ["concept_2"]},
         variants=[
             LessonVariant(
                 variant_id="guided_001",
@@ -126,6 +172,7 @@ def _curriculum() -> Curriculum:
             first.concept_id: first,
             second.concept_id: second,
         },
+        branch_fallbacks={"global_remediation": ["concept_1"]},
     )
 
 
@@ -149,7 +196,10 @@ def _assignment(
     )
 
 
-def _assessment(next_action: str) -> AssessmentResult:
+def _assessment(
+    next_action: str,
+    branch_id: str | None = None,
+) -> AssessmentResult:
     return AssessmentResult(
         assessment_id="assessment_1",
         attempt_id="attempt_1",
@@ -175,7 +225,7 @@ def _assessment(next_action: str) -> AssessmentResult:
         missing_evidence=[],
         feedback_items=[],
         next_action=next_action,
-        branch_id=None,
+        branch_id=branch_id,
         next_action_reason="test reason",
         feedback_summary="test",
         confidence=1.0,

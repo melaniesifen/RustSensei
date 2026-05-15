@@ -29,6 +29,7 @@ class LessonSelectionDecision:
     concept: Concept
     variant: LessonVariant
     selection_rationale: str
+    branch_id: str | None = None
 
 
 LessonHandler = Callable[[LessonSelectionContext], LessonSelectionDecision]
@@ -118,16 +119,65 @@ def select_accelerated_concept(
 
 
 def select_branch_lesson(context: LessonSelectionContext) -> LessonSelectionDecision:
-    # Branch target resolution requires branch-target curriculum metadata. Until that
-    # metadata exists in the seed schema, fall back to repeat with an explicit rationale.
+    branch_id = context.last_assessment.branch_id
+    if branch_id is None:
+        return _branch_fallback_decision(
+            context,
+            "Branch action fell back to repeat because no branch_id was provided",
+        )
+
+    current_concept = context.curriculum.concepts[context.last_assignment.concept_id]
+    target_concept = _branch_target_concept(
+        curriculum=context.curriculum,
+        current_concept=current_concept,
+        branch_id=branch_id,
+    )
+    if target_concept is None:
+        return _branch_fallback_decision(
+            context,
+            f"Branch action fell back to repeat because branch_id {branch_id} has no target",
+        )
+
+    return LessonSelectionDecision(
+        concept=target_concept,
+        variant=target_concept.default_variant(),
+        branch_id=branch_id,
+        selection_rationale=(
+            f"Selected branch target {branch_id} after assessment: "
+            f"{context.last_assessment.next_action_reason}"
+        ),
+    )
+
+
+def _branch_fallback_decision(
+    context: LessonSelectionContext,
+    reason: str,
+) -> LessonSelectionDecision:
     repeated = select_repeat_variant(context)
     return LessonSelectionDecision(
         concept=repeated.concept,
         variant=repeated.variant,
-        selection_rationale=(
-            "Branch action fell back to repeat because branch targets are not "
-            f"implemented: {context.last_assessment.next_action_reason}"
+        branch_id=context.last_assessment.branch_id,
+        selection_rationale=f"{reason}: {context.last_assessment.next_action_reason}",
+    )
+
+
+def _branch_target_concept(
+    curriculum: Curriculum,
+    current_concept: Concept,
+    branch_id: str,
+) -> Concept | None:
+    target_ids = current_concept.branch_targets.get(
+        branch_id,
+        curriculum.branch_fallbacks.get(branch_id, []),
+    )
+    return next(
+        (
+            curriculum.concepts[concept_id]
+            for concept_id in target_ids
+            if concept_id in curriculum.concepts
         ),
+        None,
     )
 
 

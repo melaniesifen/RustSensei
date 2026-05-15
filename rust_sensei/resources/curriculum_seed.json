@@ -1,5 +1,13 @@
 {
   "curriculum_version": "0.1.0",
+  "branch_fallbacks": {
+    "compiler_feedback_remediation": [
+      "cargo_hello_world"
+    ],
+    "problem_solving_enrichment": [
+      "traits_generics_testing"
+    ]
+  },
   "concepts": [
     {
       "concept_id": "cargo_hello_world",
@@ -48,6 +56,14 @@
         "readability",
         "compiler_error_handling"
       ],
+      "branch_targets": {
+        "compiler_feedback_remediation": [
+          "cargo_hello_world"
+        ],
+        "problem_solving_enrichment": [
+          "ownership_borrowing_intro"
+        ]
+      },
       "variants": [
         {
           "variant_id": "guided_001",

@@ -43,6 +43,7 @@ class Concept:
     learner_command: str | None
     rubric_ids: list[str]
     variants: list[LessonVariant]
+    branch_targets: dict[str, list[str]] = field(default_factory=dict)
 
     def default_variant(self) -> LessonVariant:
         variant = next(
@@ -65,6 +66,7 @@ class Concept:
 class Curriculum:
     curriculum_version: str
     concepts: dict[str, Concept]
+    branch_fallbacks: dict[str, list[str]] = field(default_factory=dict)
 
     @classmethod
     def from_dict(cls, data: dict[str, Any]) -> "Curriculum":
@@ -73,6 +75,10 @@ class Curriculum:
         curriculum = cls(
             curriculum_version=data["curriculum_version"],
             concepts={concept.concept_id: concept for concept in concepts},
+            branch_fallbacks={
+                key: list(value)
+                for key, value in data.get("branch_fallbacks", {}).items()
+            },
         )
         _validate_curriculum(curriculum)
         return curriculum
@@ -87,6 +93,10 @@ def _concept_from_dict(data: dict[str, Any]) -> Concept:
         learner_command=data.get("learner_command"),
         rubric_ids=list(data["rubric_ids"]),
         variants=[_variant_from_dict(item) for item in data["variants"]],
+        branch_targets={
+            key: list(value)
+            for key, value in data.get("branch_targets", {}).items()
+        },
     )
 
 
@@ -124,6 +134,8 @@ def _validate_curriculum(curriculum: Curriculum) -> None:
         concept.default_variant()
         _validate_rubrics(concept)
         _validate_commands(concept)
+        _validate_branch_targets(curriculum, concept.branch_targets)
+    _validate_branch_targets(curriculum, curriculum.branch_fallbacks)
 
 
 def _validate_rubrics(concept: Concept) -> None:
@@ -146,6 +158,27 @@ def _validate_commands(concept: Concept) -> None:
                 raise ValueError(f"Variant {variant.variant_id} has an empty command")
             if not command.purpose:
                 raise ValueError(f"Variant {variant.variant_id} has an empty purpose")
+
+
+def _validate_branch_targets(
+    curriculum: Curriculum,
+    branch_targets: dict[str, list[str]],
+) -> None:
+    for branch_id, concept_ids in branch_targets.items():
+        if not branch_id:
+            raise ValueError("Branch target ids must not be empty")
+        if not concept_ids:
+            raise ValueError(f"Branch target {branch_id} must define at least 1 concept")
+
+        missing = [
+            concept_id
+            for concept_id in concept_ids
+            if concept_id not in curriculum.concepts
+        ]
+        if missing:
+            raise ValueError(
+                f"Branch target {branch_id} references unknown concepts: {missing}"
+            )
 
 
 def _validate_unique(label: str, values: list[str]) -> None:

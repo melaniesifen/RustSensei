@@ -7,6 +7,7 @@ def test_default_variant_matches_default_difficulty():
     curriculum = Curriculum.from_dict(
         {
             "curriculum_version": "test",
+            "branch_fallbacks": {"global_branch": ["variables"]},
             "concepts": [
                 {
                     "concept_id": "variables",
@@ -15,6 +16,7 @@ def test_default_variant_matches_default_difficulty():
                     "default_difficulty": "guided",
                     "learner_command": "cargo run",
                     "rubric_ids": ["rust_correctness"],
+                    "branch_targets": {"local_branch": ["variables"]},
                     "variants": [
                         {
                             "variant_id": "intro_001",
@@ -37,6 +39,10 @@ def test_default_variant_matches_default_difficulty():
     variant = curriculum.concepts["variables"].default_variant()
 
     assert variant.variant_id == "guided_001"
+    assert curriculum.branch_fallbacks == {"global_branch": ["variables"]}
+    assert curriculum.concepts["variables"].branch_targets == {
+        "local_branch": ["variables"]
+    }
 
 
 def test_curriculum_rejects_missing_default_difficulty_variant():
@@ -92,6 +98,34 @@ def test_curriculum_rejects_duplicate_variant_ids():
                                 "prompt": "Other",
                                 "success_criteria": ["Compiles"],
                             },
+                        ],
+                    }
+                ],
+            }
+        )
+
+
+def test_curriculum_rejects_unknown_branch_target():
+    with pytest.raises(ValueError):
+        Curriculum.from_dict(
+            {
+                "curriculum_version": "test",
+                "concepts": [
+                    {
+                        "concept_id": "variables",
+                        "title": "Variables",
+                        "order": 1,
+                        "default_difficulty": "intro",
+                        "learner_command": "cargo run",
+                        "rubric_ids": ["rust_correctness"],
+                        "branch_targets": {"missing_branch": ["missing"]},
+                        "variants": [
+                            {
+                                "variant_id": "intro_001",
+                                "difficulty": "intro",
+                                "prompt": "Intro",
+                                "success_criteria": ["Compiles"],
+                            }
                         ],
                     }
                 ],
