@@ -799,17 +799,24 @@ Provider rules:
 ```python
 from mcp.server.fastmcp import FastMCP
 
-from rust_sensei.services.session_service import SessionService
-from rust_sensei.services.lesson_service import LessonService
-from rust_sensei.services.assessment_service import AssessmentService
-from rust_sensei.services.setup_service import SetupService
+from rust_sensei.constants import MCP_SERVER_NAME
+from rust_sensei.factory import ServiceFactory
+from rust_sensei.mcp_server import register_handlers
 
-mcp = FastMCP("rust-sensei")
+services = ServiceFactory(...)
+mcp = FastMCP(MCP_SERVER_NAME)
+register_handlers(mcp, services)
+mcp.run()
+```
 
-session_service = SessionService(...)
-lesson_service = LessonService(...)
-assessment_service = AssessmentService(...)
-setup_service = SetupService(...)
+Handler registration is separated from `run` so tests can verify the registered MCP tools, resources, prompts, validation behavior, and error envelopes without importing the real SDK.
+
+```python
+session_service = services.session_service()
+lesson_service = services.lesson_service()
+assessment_service = services.assessment_service()
+progress_service = services.progress_service()
+setup_service = services.setup_service()
 
 
 @mcp.tool()

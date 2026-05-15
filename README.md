@@ -32,7 +32,7 @@ This repository contains design documentation and a local Python implementation 
 - Progress service implements `get_progress_summary` with completed/repeated/skipped concepts, recent events, recommended focus, and trend.
 - Setup service for Python, Cargo, and state directory diagnostics.
 - Daily append-only file logging under the configured state directory.
-- Initial tests for session, lesson assignment, attempt submission, assessment, scoring, setup, and JSON state behavior.
+- Tests for session, lesson assignment, attempt submission, assessment, scoring, setup, JSON state behavior, and MCP handler registration.
 
 Implemented MCP tools in code:
 
@@ -53,7 +53,7 @@ Implemented MCP resources in code:
 
 Known limitations:
 
-- The MCP boundary is not integration-tested because the `mcp` package is not available from the current local package index.
+- MCP handler registration is unit-tested with a fake registrar. The MCP boundary is not integration-tested against the real SDK because the `mcp` package is not available from the current local package index.
 - MCP tools currently use a `payload` wrapper pending SDK schema verification. This should be resolved before treating the MCP contract as stable.
 - `force_new_variant` is supported only with `abandon_active_assignment` while an active assignment exists.
 - `assess_attempt` uses deterministic scoring only. It does not call an LLM.
@@ -69,7 +69,7 @@ Install the project with developer dependencies:
 python -m pip install ".[dev]"
 ```
 
-The MCP SDK package may be unavailable on some package indexes. The current unit tests cover the implemented service, storage, logging, CLI, and DTO layers without starting the MCP server.
+The MCP SDK package may be unavailable on some package indexes. The current unit tests cover the implemented service, storage, logging, CLI, DTO, and MCP handler registration layers without starting the MCP server.
 
 ## Unit Tests
 
@@ -104,15 +104,15 @@ Open `htmlcov/index.html` in a browser to inspect file-by-file coverage. The `ht
 
 Latest known verification:
 
-- `113` tests passed.
-- Coverage passed at `94.10%`.
+- `120` tests passed.
+- Coverage passed at `93.28%`.
 - Tests ran under local Python `3.9.6` with compatibility dependencies, while project metadata targets Python `3.11+`. Treat the `3.9.6` run as incidental compatibility coverage, not the supported runtime.
 
 ## Next Work
 
 Recommended implementation order:
 
-1. Resolve MCP SDK integration and test tool schemas/calls, including the `payload` wrapper decision.
+1. Verify the registered MCP surface against the official SDK and resolve the `payload` wrapper decision.
 2. Verify the full test suite under supported Python `3.11+` and clean up setup docs around unsupported Python versions.
 3. Add CLI diagnostics such as `doctor`.
 4. Clean up packaging and setup docs.
