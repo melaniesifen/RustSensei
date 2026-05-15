@@ -73,7 +73,19 @@ Rust Sensei targets Python `3.11+`.
 Install the project with developer dependencies:
 
 ```bash
-python -m pip install ".[dev]"
+python -m pip install -e ".[dev]"
+```
+
+Install the MCP server dependency when the package index can provide the official MCP SDK:
+
+```bash
+python -m pip install -e ".[mcp]"
+```
+
+Use both extras when developing against the real SDK:
+
+```bash
+python -m pip install -e ".[dev-mcp]"
 ```
 
 The MCP SDK package may be unavailable on some package indexes. The current unit tests cover the implemented service, storage, logging, CLI, DTO, and MCP handler registration layers without starting the MCP server.
@@ -118,8 +130,8 @@ Open `htmlcov/index.html` in a browser to inspect file-by-file coverage. The `ht
 
 Latest known verification:
 
-- `129` tests passed.
-- Coverage passed at `93.34%`.
+- `130` tests passed.
+- Coverage passed at `93.30%`.
 - Tests ran under local Python `3.9.6` with compatibility dependencies, while project metadata targets Python `3.11+`. Treat the `3.9.6` run as incidental compatibility coverage, not the supported runtime.
 
 ## Next Work
