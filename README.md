@@ -52,6 +52,12 @@ Implemented MCP resources in code:
 - `rust-sensei://progress/summary`
 - `rust-sensei://curriculum/concepts`
 
+Implemented MCP prompts in code:
+
+- `rust_sensei_tutor`
+- `rust_sensei_attempt_review`
+- `rust_sensei_stuck_coaching`
+
 Known limitations:
 
 - MCP handler registration is unit-tested with a fake registrar. The MCP boundary is not integration-tested against the real SDK because the `mcp` package is not available from the current local package index.
@@ -112,8 +118,8 @@ Open `htmlcov/index.html` in a browser to inspect file-by-file coverage. The `ht
 
 Latest known verification:
 
-- `127` tests passed.
-- Coverage passed at `93.32%`.
+- `129` tests passed.
+- Coverage passed at `93.34%`.
 - Tests ran under local Python `3.9.6` with compatibility dependencies, while project metadata targets Python `3.11+`. Treat the `3.9.6` run as incidental compatibility coverage, not the supported runtime.
 
 ## Next Work
