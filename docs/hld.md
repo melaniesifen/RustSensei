@@ -107,8 +107,8 @@ Tools, resources, and prompts are v1 requirements. Richer variants can be added 
 - `FR-10`: Rust Sensei must persist lesson assignments, attempts, assessments, learner signals, and progress events for auditability.
 - `FR-11`: v1 supports only `local-default` unless explicitly configured.
 - `FR-11`: v1 must return a validation or not-found error for unsupported learner ids.
-- `FR-13`: `get_setup_status` is the v1 setup diagnostics path.
-- `FR-13`: A future `doctor` command may wrap or extend `get_setup_status` as a CLI diagnostic command.
+- `FR-13`: `get_setup_status` is the v1 MCP setup diagnostics path.
+- `FR-13`: `doctor` wraps `get_setup_status` as a CLI diagnostic command with human and JSON output.
 
 ### 2.8 Session And Placement Protocol
 
@@ -276,14 +276,14 @@ Example adaptive outcomes:
 
 ### 7.1 Rust Toolchain Missing
 
-- Trigger: `get_setup_status`, Codex, or future `doctor` cannot find `rustc`.
+- Trigger: `get_setup_status`, Codex, or `doctor` cannot find `rustc`.
 - Related requirements: `FR-07`, `FR-13`.
 - Expected behavior: Rust Sensei reports setup incomplete and recommends installing Rust through `rustup`.
 - Assessment behavior: Do not score Rust skill from failed setup alone.
 
 ### 7.2 Cargo Missing
 
-- Trigger: `get_setup_status`, Codex, or future `doctor` cannot find `cargo`.
+- Trigger: `get_setup_status`, Codex, or `doctor` cannot find `cargo`.
 - Related requirements: `FR-07`, `FR-13`.
 - Expected behavior: Rust Sensei reports setup incomplete and blocks lessons that require Cargo commands.
 - Assessment behavior: Record workflow blocker, not coding failure.
@@ -366,7 +366,7 @@ Example adaptive outcomes:
 - Database storage: v1 uses JSON, but repository interfaces should allow a later SQLite or hosted database adapter without changing MCP tools or assessment logic.
 - Other MCP clients: Codex is the primary documented client for v1, but Claude Code and other MCP clients should be supported through the same tools.
 - Packaged installation: Later versions should support `pipx install rust-sensei` or `uv tool install rust-sensei`.
-- `doctor` command: Later versions should include a CLI diagnostic command that checks Python, Rust, Cargo, state path, lesson catalog, and MCP startup.
+- `doctor` command: v1 wraps Python, rustc, Cargo, and state path setup diagnostics. Later versions should also check lesson catalog validity and MCP startup.
 - Specialized tracks: After general Rust fluency, later versions can add CLI, backend, async, performance, systems programming, and LeetCode-style tracks.
 - Optional code runner: v1 does not execute learner code inside Rust Sensei. A later version may add a sandboxed runner behind a separate interface.
 - LLM-assisted assessment: v1 deterministic scoring is a baseline for idempotency and local operation, not the final code-understanding strategy. A later version should add an assessment provider interface that can use an LLM to judge Rust idioms, compiler-error handling, and problem solving while preserving persisted scoring versions, evidence, confidence, and retry idempotency.

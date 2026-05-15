@@ -67,7 +67,7 @@ The MCP server has 6 implementation areas:
 5. JSON storage adapter
 6. CLI entrypoint
 
-The MCP interface layer converts tool calls into service calls. Application services contain session, curriculum, assessment, and setup logic. Domain models define typed inputs and outputs. Repositories define persistence boundaries. The JSON adapter implements those repositories for v1. The CLI entrypoint starts the MCP server and later supports `doctor`.
+The MCP interface layer converts tool calls into service calls. Application services contain session, curriculum, assessment, and setup logic. Domain models define typed inputs and outputs. Repositories define persistence boundaries. The JSON adapter implements those repositories for v1. The CLI entrypoint starts the MCP server and supports `setup-status` and `doctor` setup diagnostics.
 
 ### 4.1 Package Layout
 

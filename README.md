@@ -30,7 +30,8 @@ This repository contains design documentation and a local Python implementation 
 - Skill model updates with confidence dampening live in `rust_sensei/domain/skill_update.py`.
 - Append-only progress events are stored for assignment creation/viewing, attempt submission, assessment, and assignment abandonment. Lifecycle events for creation, attempt submission, assessment, and abandonment are written in the same JSON transaction as the canonical state change.
 - Progress service implements `get_progress_summary` with completed/repeated/skipped concepts, recent events, recommended focus, and trend.
-- Setup service for Python, Cargo, and state directory diagnostics.
+- Setup service for Python, rustc, Cargo, and state directory diagnostics.
+- CLI diagnostics include `setup-status` JSON output and `doctor` human or JSON output.
 - Daily append-only file logging under the configured state directory.
 - Tests for session, lesson assignment, attempt submission, assessment, scoring, setup, JSON state behavior, and MCP handler registration.
 
@@ -71,6 +72,13 @@ python -m pip install ".[dev]"
 
 The MCP SDK package may be unavailable on some package indexes. The current unit tests cover the implemented service, storage, logging, CLI, DTO, and MCP handler registration layers without starting the MCP server.
 
+Run local setup diagnostics:
+
+```bash
+python -m rust_sensei doctor
+python -m rust_sensei doctor --json
+```
+
 ## Unit Tests
 
 Run the unit test suite:
@@ -104,8 +112,8 @@ Open `htmlcov/index.html` in a browser to inspect file-by-file coverage. The `ht
 
 Latest known verification:
 
-- `120` tests passed.
-- Coverage passed at `93.28%`.
+- `127` tests passed.
+- Coverage passed at `93.32%`.
 - Tests ran under local Python `3.9.6` with compatibility dependencies, while project metadata targets Python `3.11+`. Treat the `3.9.6` run as incidental compatibility coverage, not the supported runtime.
 
 ## Next Work
@@ -114,8 +122,7 @@ Recommended implementation order:
 
 1. Verify the registered MCP surface against the official SDK and resolve the `payload` wrapper decision.
 2. Verify the full test suite under supported Python `3.11+` and clean up setup docs around unsupported Python versions.
-3. Add CLI diagnostics such as `doctor`.
-4. Clean up packaging and setup docs.
+3. Clean up packaging and setup docs.
 
 ## Documents
 
@@ -156,7 +163,6 @@ flowchart LR
 
 - Complete the Python MCP server tool surface.
 - Add an LLM-assisted assessment provider behind the assessment service once the deterministic baseline and idempotency contract are stable.
-- Add a `doctor` command for local setup checks.
 - Add Codex setup instructions.
 - Add Claude Code setup instructions.
 - Add optional SQLite storage after the JSON proof of concept.
