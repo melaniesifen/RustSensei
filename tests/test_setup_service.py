@@ -10,10 +10,12 @@ class FakeEnvironment(EnvironmentProbe):
     def __init__(
         self,
         python_version=(3, 11, 8),
+        rustc_path="/usr/bin/rustc",
         cargo_path="/usr/bin/cargo",
         state_dir_writable=True,
     ):
         self._python_version = python_version
+        self._rustc_path = rustc_path
         self._cargo_path = cargo_path
         self._state_dir_writable = state_dir_writable
         super().__init__(Path("/unused"))
@@ -23,6 +25,9 @@ class FakeEnvironment(EnvironmentProbe):
 
     def cargo_path(self):
         return self._cargo_path
+
+    def rustc_path(self):
+        return self._rustc_path
 
     def state_dir_writable(self):
         return self._state_dir_writable
@@ -35,6 +40,7 @@ def test_setup_status_ready_when_all_checks_pass():
 
     assert response.ready is True
     assert [check.status for check in response.checks] == [
+        SetupCheckStatus.OK,
         SetupCheckStatus.OK,
         SetupCheckStatus.OK,
         SetupCheckStatus.OK,
@@ -51,14 +57,24 @@ def test_setup_status_not_ready_when_python_is_too_old():
     assert response.checks[0].status == SetupCheckStatus.ERROR
 
 
+def test_setup_status_not_ready_when_rustc_is_missing():
+    service = SetupService(FakeEnvironment(rustc_path=None))
+
+    response = service.get_setup_status(GetSetupStatusRequest())
+
+    assert response.ready is False
+    assert response.checks[1].check_id == "rustc_available"
+    assert response.checks[1].status == SetupCheckStatus.ERROR
+
+
 def test_setup_status_not_ready_when_cargo_is_missing():
     service = SetupService(FakeEnvironment(cargo_path=None))
 
     response = service.get_setup_status(GetSetupStatusRequest())
 
     assert response.ready is False
-    assert response.checks[1].check_id == "cargo_available"
-    assert response.checks[1].status == SetupCheckStatus.ERROR
+    assert response.checks[2].check_id == "cargo_available"
+    assert response.checks[2].status == SetupCheckStatus.ERROR
 
 
 def test_setup_status_not_ready_when_state_dir_is_not_writable():
@@ -67,5 +83,5 @@ def test_setup_status_not_ready_when_state_dir_is_not_writable():
     response = service.get_setup_status(GetSetupStatusRequest())
 
     assert response.ready is False
-    assert response.checks[2].check_id == "state_dir_writable"
-    assert response.checks[2].status == SetupCheckStatus.ERROR
+    assert response.checks[3].check_id == "state_dir_writable"
+    assert response.checks[3].status == SetupCheckStatus.ERROR

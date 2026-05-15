@@ -28,6 +28,7 @@ class SetupService:
 
         checks = [
             self._python_check(),
+            self._rustc_check(),
             self._cargo_check(),
             self._state_dir_check(),
         ]
@@ -70,6 +71,21 @@ class SetupService:
             check_id="cargo_available",
             status=SetupCheckStatus.ERROR,
             message="cargo was not found on PATH.",
+        )
+
+    def _rustc_check(self) -> SetupCheck:
+        rustc_path = self._environment.rustc_path()
+        if rustc_path:
+            return SetupCheck(
+                check_id="rustc_available",
+                status=SetupCheckStatus.OK,
+                message=f"rustc is available at {rustc_path}.",
+            )
+
+        return SetupCheck(
+            check_id="rustc_available",
+            status=SetupCheckStatus.ERROR,
+            message="rustc was not found on PATH.",
         )
 
     def _state_dir_check(self) -> SetupCheck:

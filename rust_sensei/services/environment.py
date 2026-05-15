@@ -16,6 +16,9 @@ class EnvironmentProbe:
     def cargo_path(self) -> str | None:
         return shutil.which("cargo")
 
+    def rustc_path(self) -> str | None:
+        return shutil.which("rustc")
+
     def state_dir_writable(self) -> bool:
         try:
             self._state_dir.mkdir(parents=True, exist_ok=True)
