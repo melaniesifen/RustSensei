@@ -3,3 +3,4 @@ logs/
 .rust-sensei/
 .coverage
 htmlcov/
+*.egg-info/
