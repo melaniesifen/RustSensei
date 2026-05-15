@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Callable
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from rust_sensei.domain.assessment import AssessmentResult
 from rust_sensei.domain.curriculum import Concept, Curriculum, LessonVariant
@@ -22,6 +22,7 @@ class LessonSelectionContext:
     curriculum: Curriculum
     last_assignment: LessonAssignment
     last_assessment: AssessmentResult
+    prior_assignments: list[LessonAssignment] = field(default_factory=list)
 
 
 @dataclass(frozen=True)
@@ -61,12 +62,34 @@ def default_lesson_selector() -> LessonSelector:
     )
 
 
+def select_placement_lesson(
+    curriculum: Curriculum,
+    concept_id: str,
+    prior_assignments: list[LessonAssignment],
+) -> LessonSelectionDecision:
+    concept = curriculum.concepts[concept_id]
+    variant = _variant_for_difficulty(
+        concept=concept,
+        difficulty=concept.default_difficulty,
+        prior_assignments=prior_assignments,
+    )
+    return LessonSelectionDecision(
+        concept=concept,
+        variant=variant,
+        selection_rationale="Selected from learner placement active concept.",
+    )
+
+
 def select_simplified_lesson(
     context: LessonSelectionContext,
 ) -> LessonSelectionDecision:
     concept = context.curriculum.concepts[context.last_assignment.concept_id]
     target_difficulty = _lower_difficulty(context.last_assignment.difficulty)
-    variant = _variant_for_difficulty(concept, target_difficulty)
+    variant = _variant_for_difficulty(
+        concept=concept,
+        difficulty=target_difficulty,
+        prior_assignments=context.prior_assignments,
+    )
     return LessonSelectionDecision(
         concept=concept,
         variant=variant,
@@ -79,7 +102,11 @@ def select_simplified_lesson(
 
 def select_repeat_variant(context: LessonSelectionContext) -> LessonSelectionDecision:
     concept = context.curriculum.concepts[context.last_assignment.concept_id]
-    variant = _variant_for_difficulty(concept, context.last_assignment.difficulty)
+    variant = _variant_for_difficulty(
+        concept=concept,
+        difficulty=context.last_assignment.difficulty,
+        prior_assignments=context.prior_assignments,
+    )
     return LessonSelectionDecision(
         concept=concept,
         variant=variant,
@@ -92,7 +119,11 @@ def select_repeat_variant(context: LessonSelectionContext) -> LessonSelectionDec
 
 def select_next_concept(context: LessonSelectionContext) -> LessonSelectionDecision:
     concept = _next_concept(context.curriculum, context.last_assignment.concept_id)
-    variant = concept.default_variant()
+    variant = _variant_for_difficulty(
+        concept=concept,
+        difficulty=concept.default_difficulty,
+        prior_assignments=context.prior_assignments,
+    )
     return LessonSelectionDecision(
         concept=concept,
         variant=variant,
@@ -107,7 +138,11 @@ def select_accelerated_concept(
     context: LessonSelectionContext,
 ) -> LessonSelectionDecision:
     concept = _next_concept(context.curriculum, context.last_assignment.concept_id)
-    variant = _variant_for_difficulty(concept, Difficulty.CHALLENGE)
+    variant = _variant_for_difficulty(
+        concept=concept,
+        difficulty=Difficulty.CHALLENGE,
+        prior_assignments=context.prior_assignments,
+    )
     return LessonSelectionDecision(
         concept=concept,
         variant=variant,
@@ -140,7 +175,11 @@ def select_branch_lesson(context: LessonSelectionContext) -> LessonSelectionDeci
 
     return LessonSelectionDecision(
         concept=target_concept,
-        variant=target_concept.default_variant(),
+        variant=_variant_for_difficulty(
+            concept=target_concept,
+            difficulty=target_concept.default_difficulty,
+            prior_assignments=context.prior_assignments,
+        ),
         branch_id=branch_id,
         selection_rationale=(
             f"Selected branch target {branch_id} after assessment: "
@@ -204,14 +243,28 @@ def _lower_difficulty(difficulty: str) -> str:
     return DIFFICULTY_ORDER[max(index - 1, 0)]
 
 
-def _variant_for_difficulty(concept: Concept, difficulty: str) -> LessonVariant:
+def _variant_for_difficulty(
+    concept: Concept,
+    difficulty: str,
+    prior_assignments: list[LessonAssignment],
+) -> LessonVariant:
+    candidates = [
+        variant
+        for variant in concept.variants
+        if variant.difficulty == difficulty
+    ]
+    if not candidates:
+        return concept.default_variant()
+
+    used_variant_ids = {
+        assignment.variant_id
+        for assignment in prior_assignments
+        if assignment.concept_id == concept.concept_id
+        and assignment.difficulty == difficulty
+    }
     return next(
-        (
-            variant
-            for variant in concept.variants
-            if variant.difficulty == difficulty
-        ),
-        concept.default_variant(),
+        (variant for variant in candidates if variant.variant_id not in used_variant_ids),
+        candidates[0],
     )
 
 

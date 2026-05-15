@@ -48,6 +48,45 @@ def test_lesson_selector_repeats_for_unknown_action():
     assert decision.variant.variant_id == "standard_001"
 
 
+def test_lesson_selector_repeats_with_next_unused_variant():
+    selector = default_lesson_selector()
+    curriculum = _curriculum()
+
+    decision = selector.select_next_lesson(
+        LessonSelectionContext(
+            curriculum=curriculum,
+            last_assignment=_assignment("concept_1", Difficulty.STANDARD, "standard_001"),
+            last_assessment=_assessment(NextAction.REPEAT),
+            prior_assignments=[
+                _assignment("concept_1", Difficulty.STANDARD, "standard_001")
+            ],
+        )
+    )
+
+    assert decision.concept.concept_id == "concept_1"
+    assert decision.variant.variant_id == "standard_002"
+
+
+def test_lesson_selector_repeats_first_variant_when_all_variants_used():
+    selector = default_lesson_selector()
+    curriculum = _curriculum()
+
+    decision = selector.select_next_lesson(
+        LessonSelectionContext(
+            curriculum=curriculum,
+            last_assignment=_assignment("concept_1", Difficulty.STANDARD, "standard_002"),
+            last_assessment=_assessment(NextAction.REPEAT),
+            prior_assignments=[
+                _assignment("concept_1", Difficulty.STANDARD, "standard_001"),
+                _assignment("concept_1", Difficulty.STANDARD, "standard_002"),
+            ],
+        )
+    )
+
+    assert decision.concept.concept_id == "concept_1"
+    assert decision.variant.variant_id == "standard_001"
+
+
 def test_lesson_selector_resolves_concept_branch_target():
     selector = default_lesson_selector()
     curriculum = _curriculum()
@@ -146,6 +185,12 @@ def _curriculum() -> Curriculum:
                 variant_id="standard_001",
                 difficulty=Difficulty.STANDARD,
                 prompt="standard",
+                success_criteria=["done"],
+            ),
+            LessonVariant(
+                variant_id="standard_002",
+                difficulty=Difficulty.STANDARD,
+                prompt="standard alternate",
                 success_criteria=["done"],
             ),
         ],

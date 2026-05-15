@@ -41,6 +41,29 @@
               "allowed_for_agent_verification": true
             }
           ]
+        },
+        {
+          "variant_id": "intro_002",
+          "difficulty": "intro",
+          "prompt": "Create a Cargo binary project that prints a short greeting and the current lesson name.",
+          "success_criteria": [
+            "The project builds with Cargo",
+            "Running the program prints a greeting",
+            "Running the program prints the lesson name"
+          ],
+          "hints": [
+            "Use cargo new to create a binary project",
+            "Use more than 1 println! call if that keeps the output clear"
+          ],
+          "lesson_commands": [
+            {
+              "command": "cargo run",
+              "purpose": "Run the learner's alternate Rust program",
+              "risk_level": "low",
+              "required": true,
+              "allowed_for_agent_verification": true
+            }
+          ]
         }
       ]
     },

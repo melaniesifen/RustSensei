@@ -12,6 +12,7 @@ from rust_sensei.domain.lesson_selection import (
     LessonSelectionDecision,
     LessonSelectionContext,
     default_lesson_selector,
+    select_placement_lesson,
 )
 from rust_sensei.domain.progress import ProgressEvent, ProgressEventType
 from rust_sensei.dto.lesson import GetNextLessonRequest, GetNextLessonResponse
@@ -136,11 +137,16 @@ class LessonService:
         if assessed_assignment is not None:
             decision = self._selection_after_assessment(assessed_assignment)
         else:
-            concept = self._get_concept(profile.active_concept_id)
-            decision = LessonSelectionDecision(
-                concept=concept,
-                variant=concept.default_variant(),
-                selection_rationale="Selected from learner placement active concept.",
+            self._get_concept(profile.active_concept_id)
+            curriculum = self._curriculum_repository.get_curriculum()
+            decision = select_placement_lesson(
+                curriculum=curriculum,
+                concept_id=profile.active_concept_id,
+                prior_assignments=(
+                    self._assignment_repository.list_assignments_for_learner(
+                        request.learner_id
+                    )
+                ),
             )
 
         return self._create_assignment_from_decision(
@@ -205,6 +211,11 @@ class LessonService:
                 curriculum=curriculum,
                 last_assignment=assignment,
                 last_assessment=assessment,
+                prior_assignments=(
+                    self._assignment_repository.list_assignments_for_learner(
+                        assignment.learner_id
+                    )
+                ),
             )
         )
 

@@ -1,8 +1,10 @@
 import pytest
 
 from rust_sensei.domain.enums import AssignmentStatus, RustLevel
+from rust_sensei.domain.learner import LearnerProfile
 from rust_sensei.domain.lesson import LessonAssignment
 from rust_sensei.domain.progress import ProgressEventType
+from rust_sensei.domain.skill import SkillModel
 from rust_sensei.dto.assessment import AssessAttemptRequest
 from rust_sensei.dto.attempt import SubmitAttemptRequest
 from rust_sensei.dto.lesson import GetNextLessonRequest
@@ -148,6 +150,7 @@ def test_get_next_lesson_abandons_active_assignment_then_creates_new_one(tmp_pat
     assert response.assignment.assignment_id == ASSIGNMENT_ID_2
     assert response.assignment.status == AssignmentStatus.ACTIVE
     assert response.assignment.concept_id == CARGO_HELLO_WORLD_CONCEPT_ID
+    assert response.assignment.variant_id == "intro_002"
     assert response.reused_active_assignment is False
     assert [event.event_type for event in events[:2]] == [
         ProgressEventType.ASSIGNMENT_CREATED,
@@ -166,6 +169,24 @@ def test_get_next_lesson_rejects_abandon_without_active_assignment(tmp_path):
                 abandonment_reason="nothing active",
             )
         )
+
+
+def test_get_next_lesson_rejects_missing_profile_active_concept(tmp_path):
+    _, lesson_service, _ = _services(tmp_path)
+    repositories = JsonRepositoryFactory(tmp_path)
+    repositories.learner_repository().save_profile(
+        LearnerProfile(
+            learner_id=TEST_LEARNER_ID,
+            rust_level_initial=RustLevel.NEW,
+            active_concept_id="missing_concept",
+            skill_model=SkillModel(),
+            created_at=TEST_NOW,
+            updated_at=TEST_NOW,
+        )
+    )
+
+    with pytest.raises(NotFoundError):
+        lesson_service.get_next_lesson(GetNextLessonRequest())
 
 
 def test_get_next_lesson_fails_when_assignment_variant_is_missing(tmp_path):
@@ -243,6 +264,7 @@ def test_get_next_lesson_repeats_after_insufficient_evidence(tmp_path):
     assert response.assignment is not None
     assert response.assignment.assignment_id == ASSIGNMENT_ID_2
     assert response.assignment.concept_id == CARGO_HELLO_WORLD_CONCEPT_ID
+    assert response.assignment.variant_id == "intro_002"
     assert response.assignment.selection_rationale.startswith(
         "Selected by repeat action after assessment"
     )
