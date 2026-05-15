@@ -20,9 +20,9 @@ This repository contains design documentation and a local Python implementation 
 
 - Package metadata and CLI entrypoint.
 - Typed DTO and domain models for session, setup, lesson assignment, curriculum, attempt submission, and assessment flows.
-- JSON repositories for learner profiles, lesson assignments, curriculum seed data, attempts, and assessments.
+- JSON repositories for learner profiles, lesson assignments, curriculum seed data, attempts, assessments, and learner signals.
 - Atomic JSON writes with file locking and state revision tracking.
-- Session service for initial placement and active profile retrieval.
+- Session service for initial placement, active profile retrieval, and learner signal recording.
 - Lesson service for first assignment selection, active assignment reuse, active-assignment abandonment, pending-assessment detection, and post-assessment adaptive selection.
 - Adaptive lesson selection handlers live in `rust_sensei/domain/lesson_selection.py`.
 - Assessment service implements `submit_attempt` and an initial `assess_attempt` flow with persisted idempotent assessment records.
@@ -42,17 +42,17 @@ Implemented MCP tools in code:
 - `submit_attempt`
 - `assess_attempt`
 - `get_progress_summary`
+- `update_learner_signal`
 - `get_setup_status`
 
 Known limitations:
 
 - The MCP boundary is not integration-tested because the `mcp` package is not available from the current local package index.
 - MCP tools currently use a `payload` wrapper pending SDK schema verification. This should be resolved before treating the MCP contract as stable.
-- `update_learner_signal` is not implemented.
 - Progress summary MCP resources are not implemented.
 - Branch target metadata and alternate prompt variants are not implemented.
 - `force_new_variant` is supported only with `abandon_active_assignment` while an active assignment exists.
-- `assess_attempt` uses deterministic scoring only. It does not call an LLM, and the future LLM-assisted assessment boundary is still a design issue.
+- `assess_attempt` uses deterministic scoring only. It does not call an LLM.
 - v1 still supports only `local-default` as the learner id.
 
 ## Developer Setup
@@ -100,8 +100,8 @@ Open `htmlcov/index.html` in a browser to inspect file-by-file coverage. The `ht
 
 Latest known verification:
 
-- `101` tests passed.
-- Coverage passed at `93.99%`.
+- `105` tests passed.
+- Coverage passed at `94.10%`.
 - Tests ran under local Python `3.9.6` with compatibility dependencies, while project metadata targets Python `3.11+`. Treat the `3.9.6` run as incidental compatibility coverage, not the supported runtime.
 
 ## Next Work
@@ -110,13 +110,11 @@ Recommended implementation order:
 
 1. Resolve MCP SDK integration and test tool schemas/calls, including the `payload` wrapper decision.
 2. Verify the full test suite under supported Python `3.11+` and clean up setup docs around unsupported Python versions.
-3. Add `update_learner_signal`.
-4. Add branch target metadata and branch lesson resolution.
-5. Add alternate prompt variants and deterministic variant rotation.
-6. Add MCP resources for progress summary and curriculum concepts.
-7. Define the assessment provider boundary for deterministic v1 scoring and future LLM-assisted assessment.
-8. Add CLI diagnostics such as `doctor`.
-9. Clean up packaging and setup docs.
+3. Add branch target metadata and branch lesson resolution.
+4. Add alternate prompt variants and deterministic variant rotation.
+5. Add MCP resources for progress summary and curriculum concepts.
+6. Add CLI diagnostics such as `doctor`.
+7. Clean up packaging and setup docs.
 
 ## Documents
 

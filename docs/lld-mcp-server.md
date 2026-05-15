@@ -350,7 +350,15 @@ class GetProgressSummaryResponse(BaseModel):
 
 class UpdateLearnerSignalRequest(BaseModel):
     learner_id: str = "local-default"
-    signal_type: str
+    signal_type: Literal[
+        "confusion",
+        "confidence",
+        "blocker",
+        "pacing",
+        "too_easy",
+        "too_hard",
+        "boredom",
+    ]
     value: str | float | bool
     notes: str | None = None
 
@@ -678,7 +686,7 @@ class ProgressEventRepository(Protocol):
 
 
 class LearnerSignalRepository(Protocol):
-    def save_signal(self, signal: LearnerSignal) -> None: ...
+    def save_signal(self, signal: LearnerSignal) -> LearnerSignal: ...
     def list_recent_signals(self, learner_id: str, limit: int) -> list[LearnerSignal]: ...
 
 
