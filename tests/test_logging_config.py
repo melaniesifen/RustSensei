@@ -38,6 +38,54 @@ def test_configure_logging_does_not_duplicate_handlers_for_relative_paths(
     assert len(handlers) == 1
 
 
+def test_configure_logging_replaces_prior_file_handler_for_new_state_dir(tmp_path):
+    logger = logging.getLogger("rust_sensei")
+    _clear_handlers(logger)
+
+    first_log_dir = configure_logging(tmp_path / "first")
+    second_log_dir = configure_logging(tmp_path / "second")
+
+    handlers = [
+        handler
+        for handler in logger.handlers
+        if isinstance(handler, TimedRotatingFileHandler)
+    ]
+    assert len(handlers) == 1
+    assert Path(handlers[0].baseFilename) == second_log_dir / "rust-sensei.log"
+    assert not any(
+        Path(handler.baseFilename) == first_log_dir / "rust-sensei.log"
+        for handler in handlers
+    )
+
+
+def test_configure_logging_preserves_external_rotating_file_handlers(tmp_path):
+    logger = logging.getLogger("rust_sensei")
+    _clear_handlers(logger)
+    external_log_file = tmp_path / "external.log"
+    external_handler = TimedRotatingFileHandler(
+        filename=external_log_file,
+        when="midnight",
+        backupCount=1,
+        encoding="utf-8",
+    )
+    logger.addHandler(external_handler)
+
+    configure_logging(tmp_path / "first")
+    second_log_dir = configure_logging(tmp_path / "second")
+
+    handlers = [
+        handler
+        for handler in logger.handlers
+        if isinstance(handler, TimedRotatingFileHandler)
+    ]
+    assert external_handler in handlers
+    assert any(
+        getattr(handler, "_rust_sensei_file_handler", False)
+        and Path(handler.baseFilename) == second_log_dir / "rust-sensei.log"
+        for handler in handlers
+    )
+
+
 def test_configure_logging_falls_back_when_state_path_is_invalid():
     logger = logging.getLogger("rust_sensei")
     _clear_handlers(logger)

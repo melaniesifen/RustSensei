@@ -22,6 +22,7 @@ def configure_logging(state_dir: Path) -> Path:
     try:
         log_dir.mkdir(parents=True, exist_ok=True)
         if not _has_file_handler(logger, log_file):
+            _remove_file_handlers(logger)
             handler = TimedRotatingFileHandler(
                 filename=log_file,
                 when="midnight",
@@ -32,6 +33,7 @@ def configure_logging(state_dir: Path) -> Path:
             )
             handler.setFormatter(logging.Formatter(LOG_FORMAT))
             handler.setLevel(logging.DEBUG)
+            handler._rust_sensei_file_handler = True
             logger.addHandler(handler)
     except OSError:
         _ensure_stderr_handler(logger)
@@ -60,6 +62,16 @@ def _has_file_handler(logger: logging.Logger, log_file: Path) -> bool:
         and Path(handler.baseFilename).resolve(strict=False) == resolved_log_file
         for handler in logger.handlers
     )
+
+
+def _remove_file_handlers(logger: logging.Logger) -> None:
+    for handler in list(logger.handlers):
+        if (
+            isinstance(handler, TimedRotatingFileHandler)
+            and getattr(handler, "_rust_sensei_file_handler", False)
+        ):
+            logger.removeHandler(handler)
+            handler.close()
 
 
 def _ensure_stderr_handler(logger: logging.Logger) -> None:
