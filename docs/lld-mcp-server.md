@@ -57,6 +57,7 @@ Primary requirement links:
 - `MS-NFR-09`: JSON writes must use atomic replace plus a single-writer lock around read-modify-write operations.
 - `MS-NFR-10`: The base package should keep the official MCP SDK in optional extras so service/storage tests can run without importing the real SDK.
 - `MS-NFR-11`: Project automation should use `.venv/bin/python` entry points instead of assuming an activated virtual environment or shell `PATH`.
+- `MS-NFR-12`: The JSON state adapter should keep a latest-valid backup and recover from it when the primary state file cannot be loaded.
 
 ## 4. LLD Summary
 
@@ -281,6 +282,13 @@ class GetNextLessonResponse(BaseModel):
     pending_attempt_id: str | None = None
 
 
+class AssignmentWorkspaceSuggestionDTO(BaseModel):
+    assignment_id: str
+    workspace_dir: str
+    lesson_file_path: str
+    report_file_path: str
+
+
 class SubmitAttemptRequest(BaseModel):
     learner_id: str = "local-default"
     assignment_id: str
@@ -387,6 +395,8 @@ class GetSetupStatusResponse(BaseModel):
 ```
 
 DTO mapping rule: MCP request and response models are Pydantic DTOs. Domain models may use dataclasses internally. Services must map explicitly between API DTOs and domain models instead of returning raw dataclasses through the MCP boundary.
+
+Future contract note: lesson workspace files and report files are agent-owned artifacts, not canonical Rust Sensei state. A later `get_next_lesson` response may include an optional `AssignmentWorkspaceSuggestionDTO` so agents can create/open lesson files consistently while keeping editor control outside the MCP server.
 
 Validation rule: `assignment_id` is required for `submit_attempt`. At least 1 assessable artifact is also required: code, compiler output, runtime output, test output, or complete command run metadata. Missing code by itself is not a validation error when another assessable artifact exists.
 
@@ -748,6 +758,8 @@ JSON repository rules:
 - Reload state after acquiring the lock.
 - Increment `state_revision` for every successful mutation.
 - Write to a temporary file, flush it, and atomically replace the prior state file.
+- Before replacing an existing valid state file, copy it to `state.json.bak`.
+- If the primary state file is invalid JSON or has an unsupported schema version, load `state.json.bak` when it is valid and restore it as the primary state file.
 - Return a conflict error if a mutation expects a revision that no longer matches.
 - `scoring_provenance` is optional for backward-compatible reads of older state, but new assessments should populate it.
 
@@ -1027,7 +1039,7 @@ Diagram description:
 ### 7.3 State Schema Version Unsupported
 
 - Trigger: JSON `schema_version` is higher than the server supports.
-- Expected behavior: Refuse writes and report the unsupported version.
+- Expected behavior: Attempt to restore a valid `state.json.bak`. If recovery succeeds, continue from the restored state. If no valid backup exists, refuse writes and report the unsupported version.
 - Requirement link: `FR-10`.
 
 ### 7.4 Unknown Assignment Or Attempt

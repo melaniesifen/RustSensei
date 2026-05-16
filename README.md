@@ -21,7 +21,7 @@ This repository contains design documentation and a local Python implementation 
 - Package metadata and CLI entrypoint.
 - Typed DTO and domain models for session, setup, lesson assignment, curriculum, attempt submission, and assessment flows.
 - JSON repositories for learner profiles, lesson assignments, curriculum seed data, attempts, assessments, and learner signals.
-- Atomic JSON writes with file locking and state revision tracking.
+- Atomic JSON writes with file locking, state revision tracking, and best-effort recovery from the latest valid backup when the primary state file is unreadable.
 - Session service for initial placement, active profile retrieval, and learner signal recording.
 - Lesson service for first assignment selection, active assignment reuse, active-assignment abandonment, pending-assessment detection, and post-assessment adaptive selection.
 - Adaptive lesson selection handlers live in `rust_sensei/domain/lesson_selection.py`, including branch target resolution and deterministic prompt variant rotation.
@@ -164,7 +164,7 @@ If `python3 --version` still shows the system Python `3.9.6`, run `source ~/.zsh
 
 Latest known verification:
 
-- `171` tests passed under Python `3.14.5` in `.venv`.
+- `180` tests passed under Python `3.14.5` in `.venv`.
 - Real FastMCP integration coverage passed with `mcp==1.27.1`.
 - Prior coverage passed at `93.30%`.
 
@@ -172,7 +172,9 @@ Latest known verification:
 
 Recommended implementation order:
 
-1. Continue hardening validation, privacy limits, JSON state recovery, and curriculum validation.
+1. Add lesson workspace artifact support so the agent creates/reuses a per-assignment Rust file except for project-setup lessons such as `cargo new`, opens the appropriate file or directory in VS Code, and submits generated paths as attempt evidence.
+2. Add lesson report generation so the agent writes a per-assignment `report.md` after assessment with Rust Sensei scores, confidence, feedback, and next action.
+3. Continue hardening validation, privacy limits, and curriculum validation.
 
 ## Documents
 

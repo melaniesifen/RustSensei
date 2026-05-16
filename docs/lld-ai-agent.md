@@ -30,6 +30,8 @@ Primary requirement links:
 - `AA-FR-10`: The agent must not invent skill scores that were not returned by Rust Sensei.
 - `AA-FR-11`: The agent must ask the Rust placement question only when Rust Sensei returns `placement_required: true`.
 - `AA-FR-12`: The agent must run verification commands only when the learner requests verification or when the lesson explicitly calls for them.
+- `AA-FR-13`: For each active assignment, the agent should create or reuse lesson workspace artifacts and open the appropriate file or directory in VS Code, except when the lesson explicitly teaches project setup such as `cargo new`.
+- `AA-FR-14`: After `assess_attempt`, the agent should write a lesson report file that summarizes the assignment, submitted artifacts, Rust Sensei scores, confidence, feedback, and next action.
 
 ## 3. Non-Functional Requirements
 
@@ -57,11 +59,13 @@ Agent responsibilities:
   - Start or resume Rust Sensei sessions.
   - Ask the placement question only when Rust Sensei requires it.
   - Present lesson prompts.
+  - Create or reuse a lesson-specific file and open it in VS Code.
   - Encourage the learner to run commands first.
   - Read local files for assessment.
   - Run verification commands when requested.
   - Submit attempts to Rust Sensei.
   - Present Rust Sensei feedback.
+  - Write learner-readable lesson reports after assessment.
 
 Rust Sensei responsibilities:
   - Track learner state.
@@ -94,7 +98,7 @@ Allowed v1 verification commands:
 
 Rules:
 
-- Run commands only from the learner workspace root.
+- Run commands from the lesson's active Cargo package root. For generated lesson artifacts, this is normally the per-assignment package directory such as `./rust-sensei-lessons/assign_000001/`; for lessons that practice `cargo new`, this is the package directory the learner created.
 - Run `cargo run` or `cargo test` only when the learner asks for verification or the lesson explicitly calls for it.
 - Use a timeout. Default timeout is 30 seconds for `cargo check` and 60 seconds for `cargo run` or `cargo test`.
 - Do not run destructive commands.
@@ -105,7 +109,52 @@ Rules:
 - Non-allowlisted lesson commands require learner confirmation before execution.
 - Destructive commands remain disallowed for v1 even if a lesson includes them.
 
-### 4.4 Codex Setup
+### 4.4 Lesson Workspace Artifacts
+
+The agent owns local editor and filesystem ergonomics for lessons. Rust Sensei remains the source of truth for assignment ids, lesson selection, attempts, assessments, and progression decisions, but it should not directly control VS Code.
+
+Required agent behavior:
+
+1. After `get_next_lesson` returns an assignment, derive a stable per-assignment workspace directory.
+2. Prefer a path inside the learner workspace, such as `./rust-sensei-lessons/assign_000001/`, when the current workspace is writable.
+3. If no suitable project workspace is available, use a dedicated local fallback such as `~/rust-sensei-workspace/lessons/assign_000001/`.
+4. Create a buildable assignment workspace before presenting the coding task, unless the lesson explicitly asks the learner to practice project creation.
+5. For normal single-file beginner lessons, create a minimal Cargo package in the assignment directory with `Cargo.toml` and `src/main.rs`.
+6. When a lesson explicitly requires practicing `cargo new`, do not pre-create the Cargo package. Instead, create or open the parent lesson directory, tell the learner the expected package name/path, and let the learner run the setup command.
+7. Run learner and agent Cargo commands from the assignment package root, not from the repository root or only the `src/` directory.
+8. Open the lesson file in VS Code or the active editor when the client environment supports it.
+9. Reuse the same assignment directory and file when the active assignment is reused. Do not overwrite learner code for an existing assignment without confirmation.
+10. Include generated lesson file paths in `submit_attempt.file_paths` and read those files when collecting assessment evidence.
+
+Recommended artifact layout:
+
+```text
+rust-sensei-lessons/
+  assign_000001/
+    Cargo.toml
+    src/
+      main.rs
+    report.md
+```
+
+`report.md` is written only after assessment. It is a user-facing artifact, not canonical state.
+
+### 4.5 Lesson Report Artifact
+
+After `assess_attempt`, the agent should write a Markdown report next to the lesson files.
+
+Report contents should include:
+
+- Assignment id, concept id, difficulty, and lesson prompt.
+- Lesson source file path and relevant submitted file paths.
+- Learner-run commands and agent verification commands.
+- Assessment status, rubric scores, confidence, and confidence explanations exactly as returned by Rust Sensei.
+- Feedback items, missing evidence, and next action exactly as returned by Rust Sensei.
+- Clearly separated optional agent guidance.
+
+The report filename should be stable for the assignment, normally `report.md`. Regenerating a report for the same assessment may overwrite the previous report; regenerating after a new assessment should preserve the canonical assessment data from Rust Sensei.
+
+### 4.6 Codex Setup
 
 Codex supports MCP server management through `codex mcp`.
 
@@ -118,7 +167,7 @@ codex mcp list
 
 This command shape matches the installed Codex CLI help: `codex mcp add <NAME> -- <COMMAND>...`. If the app-bundled Codex binary is not on `PATH`, use the full binary path or fix the shell profile before running the setup.
 
-### 4.5 Agent System Prompt Snippet
+### 4.7 Agent System Prompt Snippet
 
 ```text
 You are using Rust Sensei as the source of truth for Rust lesson progression.
@@ -127,15 +176,17 @@ Rules:
 1. Call start_session before requesting a lesson.
 2. Ask the placement question only when start_session returns placement_required: true.
 3. Call get_next_lesson before assigning work.
-4. Ask the learner to run the lesson command themselves when provided.
-5. Do not assess final performance without submitting the attempt to Rust Sensei.
-6. When assessing, collect assignment id, relevant code when available, learner-run commands, agent verification commands, command metadata, compiler output, runtime output, test output, truncation status, omitted files, learner notes, and your notes when available.
-7. Preserve Rust Sensei scores, confidence, evidence, and next-step action exactly.
-8. If you add extra advice, label it as agent guidance and do not change progression.
-9. If the learner is stuck, use update_learner_signal before changing lesson difficulty.
+4. Create or reuse lesson workspace artifacts and open the appropriate file or directory in VS Code when possible, except when the lesson explicitly teaches project setup such as cargo new.
+5. Ask the learner to run the lesson command themselves when provided.
+6. Do not assess final performance without submitting the attempt to Rust Sensei.
+7. When assessing, collect assignment id, relevant code when available, learner-run commands, agent verification commands, command metadata, compiler output, runtime output, test output, truncation status, omitted files, learner notes, and your notes when available.
+8. Preserve Rust Sensei scores, confidence, evidence, and next-step action exactly.
+9. Write a lesson report after assessment and keep optional agent guidance separate from Rust Sensei results.
+10. If you add extra advice, label it as agent guidance and do not change progression.
+11. If the learner is stuck, use update_learner_signal before changing lesson difficulty.
 ```
 
-### 4.6 Attempt Collection Shape
+### 4.8 Attempt Collection Shape
 
 ```python
 attempt_payload = {
@@ -192,7 +243,7 @@ Learner execution behavior:
 - If the learner still requests assessment, run allowed verification commands and set `learner_execution_missing: true`.
 - Submit the learner's explanation in `learner_execution_notes` when available.
 
-### 4.7 Feedback Rephrasing Rules
+### 4.9 Feedback Rephrasing Rules
 
 - The agent may summarize feedback in learner-friendly language.
 - The agent must preserve scores, confidence, evidence, and next-step action exactly.
@@ -200,15 +251,17 @@ Learner execution behavior:
 - Extra advice must be separated from Rust Sensei assessment.
 - Extra advice must not change learner progression.
 
-### 4.8 Agent Decision Rules
+### 4.10 Agent Decision Rules
 
 | Situation | Agent action |
 | --- | --- |
 | New session | Call `start_session` |
 | Rust Sensei returns `placement_required: true` | Ask exactly 1 placement question using allowed choices |
 | Learner asks what to do next | Call `get_next_lesson` |
+| Rust Sensei returns an active assignment | Create or reuse the assignment workspace file and open it in VS Code |
 | Learner says they finished editing | Ask whether they are ready for assessment before running verification |
 | Learner asks for assessment or checking | Run verification, call `submit_attempt`, then call `assess_attempt` |
+| Rust Sensei returns assessment output | Write or update the assignment `report.md` and present feedback |
 | Learner is stuck | Ask 1 focused question or call `update_learner_signal` |
 | Code does not compile | Submit compiler output as evidence |
 | Rust Sensei returns low confidence | Ask for the missing signal requested by Rust Sensei |
@@ -228,6 +281,8 @@ sequenceDiagram
     A->>S: start_session
     A->>S: get_next_lesson
     S-->>A: Lesson assignment and rubric
+    A->>W: Create or reuse assignment file
+    A->>V: Open lesson file
     A-->>U: Explain assignment and learner command
     U->>V: Write code
     U->>C: Run learner command
@@ -237,6 +292,7 @@ sequenceDiagram
     A->>S: submit_attempt with assignment_id
     A->>S: assess_attempt
     S-->>A: Scores, feedback, next action
+    A->>W: Write lesson report
     A-->>U: Present feedback and next step
 ```
 
@@ -255,12 +311,14 @@ Diagram description:
 2. Start Codex in the project root.
 3. Ask Codex for the next Rust Sensei lesson.
 4. Codex gets the lesson from Rust Sensei.
-5. Code the assignment in VS Code.
-6. Run the requested command in the VS Code terminal.
-7. Ask Codex to check the work.
-8. Codex reads the code and runs verification.
-9. Codex submits the attempt to Rust Sensei.
-10. Codex explains the assessment result and next step.
+5. Codex creates or reuses the lesson file and opens it in VS Code.
+6. Code the assignment in the opened file.
+7. Run the requested command in the VS Code terminal.
+8. Ask Codex to check the work.
+9. Codex reads the code and runs verification.
+10. Codex submits the attempt to Rust Sensei.
+11. Codex writes the lesson report.
+12. Codex explains the assessment result and next step.
 
 ## 7. Failure Scenarios
 
@@ -309,3 +367,4 @@ Diagram description:
 - Add VS Code task snippets for common Cargo commands.
 - Add debugger practice instructions once lessons reach debugging concepts.
 - Add current-file submission helpers if a client supports editor context directly.
+- Add MCP response fields for suggested assignment workspace paths if server-owned path planning becomes necessary.

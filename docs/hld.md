@@ -65,6 +65,8 @@ This design supports these primary requirements:
 - `FR-07`: Lessons must encourage learner-owned execution before agent-run verification.
 - `FR-07`: Early lessons must require the learner to practice commands such as `cargo new`, `cargo run`, `cargo check`, and later `cargo test`.
 - `FR-07`: When the learner asks for assessment, Codex may run verification commands and submit the output to Rust Sensei.
+- `FR-07`: When presenting a new assignment, the agent should create or reuse a lesson-specific Rust file in a stable lesson workspace path and open it in VS Code so the learner can start coding without creating files manually, except when the lesson explicitly teaches project setup such as `cargo new`.
+- `FR-07`: After assessment, the agent should write a learner-readable lesson report file near the lesson workspace artifacts. The report is a convenience artifact; Rust Sensei JSON state remains canonical.
 - `NFR-06`: Rust Sensei must not run arbitrary learner code in v1.
 
 ### 2.6 MCP Interface
@@ -250,20 +252,22 @@ Requirement mapping:
 6. Codex asks the learner the placement question and calls `start_session` again with the selected value.
 7. Codex calls `get_next_lesson`.
 8. Rust Sensei returns the active assignment or creates a new assignment with target concept, prompt, success criteria, hints, and rubric. This satisfies `FR-05`.
-9. Codex explains the assignment to the learner.
-10. The learner writes Rust code in VS Code.
-11. The learner runs the requested command in the VS Code terminal. Early commands include `cargo run` and `cargo check`. This satisfies `FR-07`.
-12. The learner fixes errors or asks Codex for help.
-13. When ready, the learner asks Codex to assess the work.
-14. Codex reads the relevant files and runs verification commands such as `cargo check`, `cargo run`, or `cargo test`.
-15. Codex calls `submit_attempt` with assignment id, code, command output, learner notes, and context. This satisfies `FR-08`.
-16. Rust Sensei persists the attempt and returns a server-generated `attempt_id`.
-17. Codex calls `assess_attempt` with the `attempt_id`.
-18. Rust Sensei returns an existing assessment for duplicate assessment requests or creates one assessment for a new attempt.
-19. Rust Sensei scores the attempt across rubric dimensions and updates learner state. This satisfies `FR-02`, `FR-03`, and `FR-04`.
-20. Rust Sensei returns feedback, evidence, confidence, and one next-step action: `simplify`, `repeat`, `continue`, `accelerate`, or `branch`. This satisfies `FR-05`.
-21. Codex presents coaching feedback and the next learning step.
-22. The learner continues the cycle.
+9. Codex creates or reuses a lesson-specific workspace file, such as a per-assignment `src/main.rs`, and opens it in VS Code. If the lesson explicitly teaches project setup such as `cargo new`, Codex instead opens the parent lesson directory and lets the learner create the package.
+10. Codex explains the assignment to the learner.
+11. The learner writes Rust code in the opened lesson file or in the learner-created package for project-setup lessons.
+12. The learner runs the requested command in the VS Code terminal. Early commands include `cargo run` and `cargo check`. This satisfies `FR-07`.
+13. The learner fixes errors or asks Codex for help.
+14. When ready, the learner asks Codex to assess the work.
+15. Codex reads the relevant files and runs verification commands such as `cargo check`, `cargo run`, or `cargo test`.
+16. Codex calls `submit_attempt` with assignment id, code, command output, learner notes, file paths, and context. This satisfies `FR-08`.
+17. Rust Sensei persists the attempt and returns a server-generated `attempt_id`.
+18. Codex calls `assess_attempt` with the `attempt_id`.
+19. Rust Sensei returns an existing assessment for duplicate assessment requests or creates one assessment for a new attempt.
+20. Rust Sensei scores the attempt across rubric dimensions and updates learner state. This satisfies `FR-02`, `FR-03`, and `FR-04`.
+21. Rust Sensei returns feedback, evidence, confidence, and one next-step action: `simplify`, `repeat`, `continue`, `accelerate`, or `branch`. This satisfies `FR-05`.
+22. Codex writes a lesson report file with the prompt, file paths, command evidence, scores, confidence, feedback, and next action.
+23. Codex presents coaching feedback and the next learning step.
+24. The learner continues the cycle.
 
 Example adaptive outcomes:
 
@@ -299,8 +303,8 @@ Example adaptive outcomes:
 
 - Trigger: JSON parse failure, missing required fields, or incompatible version.
 - Related requirements: `FR-09`, `FR-10`, `NFR-09`.
-- Expected behavior: Rust Sensei refuses to overwrite the invalid file, reports the state path, and offers recovery options.
-- Assessment behavior: Do not create new progress over invalid state without explicit recovery.
+- Expected behavior: Rust Sensei first attempts to restore the latest valid `state.json.bak` backup. If no valid backup exists, it refuses to overwrite the invalid file and reports the state path.
+- Assessment behavior: Do not create new progress over invalid state unless backup recovery succeeds.
 
 ### 7.5 Learner Code Does Not Compile
 
