@@ -26,7 +26,7 @@ This repository contains design documentation and a local Python implementation 
 - Lesson service for first assignment selection, active assignment reuse, active-assignment abandonment, pending-assessment detection, and post-assessment adaptive selection.
 - Adaptive lesson selection handlers live in `rust_sensei/domain/lesson_selection.py`, including branch target resolution and deterministic prompt variant rotation.
 - Assessment service implements `submit_attempt` and an initial `assess_attempt` flow with persisted idempotent assessment records, nonblank evidence validation, strict command metadata source/risk validation, artifact size limits, truncation-reason checks, and secret-bearing path rejection.
-- Deterministic rubric scoring and confidence measuring live in `rust_sensei/domain/scoring.py`.
+- Deterministic rubric scoring, confidence measuring, and confidence explanations live in `rust_sensei/domain/scoring.py`.
 - Skill model updates with confidence dampening live in `rust_sensei/domain/skill_update.py`.
 - Append-only progress events are stored for assignment creation/viewing, attempt submission, assessment, and assignment abandonment. Lifecycle events for creation, attempt submission, assessment, and abandonment are written in the same JSON transaction as the canonical state change.
 - Progress service implements `get_progress_summary` with completed/repeated/skipped concepts, recent events, recommended focus, and trend.
@@ -124,17 +124,19 @@ python -m rust_sensei doctor --json
 
 ## Unit Tests
 
-Run the unit test suite from the activated virtual environment:
+Run the unit test suite through the project virtual environment:
 
 ```bash
-python -m pytest
+.venv/bin/python -m pytest
 ```
 
 Run tests with coverage:
 
 ```bash
-python -m pytest --cov=rust_sensei --cov-report=term-missing
+.venv/bin/python -m pytest --cov=rust_sensei --cov-report=term-missing
 ```
+
+Use the explicit `.venv/bin/python -m pytest` form for automation and agent work; do not assume `pytest` is on `PATH` or that the virtual environment is activated.
 
 Coverage must stay above `85%`.
 
@@ -148,7 +150,7 @@ Read the terminal coverage report as follows:
 Optional HTML coverage report:
 
 ```bash
-python -m pytest --cov=rust_sensei --cov-report=html
+.venv/bin/python -m pytest --cov=rust_sensei --cov-report=html
 ```
 
 Open `htmlcov/index.html` in a browser to inspect file-by-file coverage. The `htmlcov/` directory is ignored by git.
@@ -157,7 +159,7 @@ If `python3 --version` still shows the system Python `3.9.6`, run `source ~/.zsh
 
 Latest known verification:
 
-- `154` tests passed under Python `3.14.5` in `.venv`.
+- `166` tests passed under Python `3.14.5` in `.venv`.
 - Real FastMCP registration and runtime calls passed with `mcp==1.27.1`.
 - Prior coverage passed at `93.30%`.
 
