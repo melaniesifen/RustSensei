@@ -73,7 +73,7 @@ The former local MCP SDK blocker has been resolved with a project virtual enviro
 - Homebrew Python `3.14.5` is available through a sourced shell.
 - A local `.venv` was created with `python3 -m venv .venv`.
 - `mcp==1.27.1` installs successfully with `.venv/bin/python -m pip install -e ".[dev-mcp]"`.
-- Real `FastMCP` registration was verified for tools, resources, prompts, direct-parameter tool schemas, and runtime `call_tool` execution for `start_session` and `get_next_lesson`.
+- Real `FastMCP` integration tests verify tools, resources, prompts, direct-parameter tool schemas, runtime tool flows, resource reads, prompt reads, and structured validation errors.
 
 ## Developer Setup
 
@@ -164,16 +164,15 @@ If `python3 --version` still shows the system Python `3.9.6`, run `source ~/.zsh
 
 Latest known verification:
 
-- `166` tests passed under Python `3.14.5` in `.venv`.
-- Real FastMCP registration and runtime calls passed with `mcp==1.27.1`.
+- `171` tests passed under Python `3.14.5` in `.venv`.
+- Real FastMCP integration coverage passed with `mcp==1.27.1`.
 - Prior coverage passed at `93.30%`.
 
 ## Next Work
 
 Recommended implementation order:
 
-1. Add more real-SDK MCP integration tests if a stable in-process testing pattern is adopted.
-2. Continue hardening validation, privacy limits, JSON state recovery, and curriculum validation.
+1. Continue hardening validation, privacy limits, JSON state recovery, and curriculum validation.
 
 ## Documents
 
