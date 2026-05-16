@@ -23,6 +23,7 @@
         {
           "variant_id": "intro_001",
           "difficulty": "intro",
+          "workspace_artifact_policy": "manual_cargo_project",
           "prompt": "Create a Cargo binary project that prints Hello, Rust Sensei.",
           "success_criteria": [
             "The project builds with Cargo",
@@ -45,6 +46,7 @@
         {
           "variant_id": "intro_002",
           "difficulty": "intro",
+          "workspace_artifact_policy": "manual_cargo_project",
           "prompt": "Create a Cargo binary project that prints a short greeting and the current lesson name.",
           "success_criteria": [
             "The project builds with Cargo",

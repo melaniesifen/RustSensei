@@ -15,6 +15,7 @@ from rust_sensei.domain.lesson_selection import (
     select_placement_lesson,
 )
 from rust_sensei.domain.progress import ProgressEvent, ProgressEventType
+from rust_sensei.domain.workspace import build_workspace_suggestion
 from rust_sensei.dto.lesson import (
     GetNextLessonRequest,
     GetNextLessonResponse,
@@ -24,6 +25,7 @@ from rust_sensei.dto.mappers import (
     curriculum_concept_to_dto,
     lesson_assignment_to_dto,
     lesson_plan_to_dto,
+    workspace_suggestion_to_dto,
 )
 from rust_sensei.errors import not_found_error, validation_error
 from rust_sensei.repositories.interfaces import (
@@ -192,6 +194,12 @@ class LessonService:
             assignment=lesson_assignment_to_dto(assignment),
             lesson_plan=lesson_plan_to_dto(resolved_concept, resolved_variant),
             reused_active_assignment=reused_active_assignment,
+            workspace_suggestion=workspace_suggestion_to_dto(
+                build_workspace_suggestion(
+                    assignment_id=assignment.assignment_id,
+                    policy=resolved_variant.workspace_artifact_policy,
+                )
+            ),
         )
 
     def _viewed_response_for_assignment(

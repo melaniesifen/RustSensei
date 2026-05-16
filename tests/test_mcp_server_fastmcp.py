@@ -76,6 +76,9 @@ def test_fastmcp_successful_tool_flow_returns_structured_payloads(tmp_path):
 
     assert result["session"]["profile"]["learner_id"] == "local-default"
     assert result["lesson"]["assignment"]["assignment_id"] == "assign_000001"
+    assert result["lesson"]["workspace_suggestion"]["report_file_path"] == (
+        "rust-sensei-lessons/assign_000001/report.md"
+    )
     assert result["attempt"]["attempt_id"] == "attempt_000001"
     assert result["assessment"]["assessment"]["attempt_id"] == "attempt_000001"
     assert result["assessment"]["assessment"]["confidence_breakdown"]["explanation"]

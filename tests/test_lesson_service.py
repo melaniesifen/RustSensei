@@ -46,6 +46,12 @@ def test_get_next_lesson_creates_first_assignment_from_placement(tmp_path):
     assert response.assignment.status == "active"
     assert response.assignment.concept_id == CARGO_HELLO_WORLD_CONCEPT_ID
     assert response.lesson_plan.learner_command == "cargo run"
+    assert response.lesson_plan.workspace_artifact_policy == "manual_cargo_project"
+    assert response.workspace_suggestion is not None
+    assert response.workspace_suggestion.workspace_dir == "rust-sensei-lessons/assign_000001"
+    assert response.workspace_suggestion.lesson_file_path is None
+    assert response.workspace_suggestion.open_path == "rust-sensei-lessons/assign_000001"
+    assert response.workspace_suggestion.create_cargo_package is False
     assert response.lesson_plan.rubric_ids == [
         "rust_correctness",
         "compiler_error_handling",
@@ -100,8 +106,38 @@ def test_get_next_lesson_reuses_active_assignment(tmp_path):
     assert second.reused_active_assignment is True
     assert second.assignment.assignment_id == first.assignment.assignment_id
     assert second.assignment.concept_id == VARIABLES_CONCEPT_ID
+    assert second.workspace_suggestion is not None
+    assert second.workspace_suggestion.assignment_id == first.assignment.assignment_id
+    assert second.workspace_suggestion.lesson_file_path == (
+        "rust-sensei-lessons/assign_000001/src/main.rs"
+    )
     assert events[0].event_type == ProgressEventType.ASSIGNMENT_VIEWED
     assert events[0].assignment_id == first.assignment.assignment_id
+
+
+def test_get_next_lesson_suggests_generated_cargo_package_for_normal_lesson(tmp_path):
+    session_service, lesson_service, _ = _services(tmp_path)
+    session_service.start_session(
+        StartSessionRequest(initial_rust_level=RustLevel.BEGINNER)
+    )
+
+    response = lesson_service.get_next_lesson(GetNextLessonRequest())
+
+    assert response.lesson_plan is not None
+    assert response.lesson_plan.workspace_artifact_policy == "cargo_binary_package"
+    assert response.workspace_suggestion is not None
+    assert response.workspace_suggestion.workspace_dir == "rust-sensei-lessons/assign_000001"
+    assert response.workspace_suggestion.package_root == "rust-sensei-lessons/assign_000001"
+    assert response.workspace_suggestion.lesson_file_path == (
+        "rust-sensei-lessons/assign_000001/src/main.rs"
+    )
+    assert response.workspace_suggestion.report_file_path == (
+        "rust-sensei-lessons/assign_000001/report.md"
+    )
+    assert response.workspace_suggestion.open_path == (
+        "rust-sensei-lessons/assign_000001/src/main.rs"
+    )
+    assert response.workspace_suggestion.create_cargo_package is True
 
 
 def test_get_next_lesson_requires_existing_profile(tmp_path):
@@ -292,6 +328,8 @@ def test_get_next_lesson_repeats_after_insufficient_evidence(tmp_path):
     assert response.assignment is not None
     assert response.assignment.assignment_id == ASSIGNMENT_ID_2
     assert response.assignment.concept_id == CARGO_HELLO_WORLD_CONCEPT_ID
+    assert response.workspace_suggestion is not None
+    assert response.workspace_suggestion.assignment_id == ASSIGNMENT_ID_2
     assert response.assignment.variant_id == "intro_002"
     assert response.assignment.selection_rationale.startswith(
         "Selected by repeat action after assessment"

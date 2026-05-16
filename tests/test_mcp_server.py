@@ -87,6 +87,7 @@ def test_registered_tools_route_successful_lesson_flow(tmp_path):
 
     assert profile["profile"]["learner_id"] == "local-default"
     assert lesson["assignment"]["assignment_id"] == "assign_000001"
+    assert lesson["workspace_suggestion"]["open_path"] == "rust-sensei-lessons/assign_000001"
     assert progress["learner_id"] == "local-default"
     assert "ready" in setup
     assert signal["recorded"] is True

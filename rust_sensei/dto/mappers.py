@@ -11,6 +11,7 @@ from rust_sensei.domain.lesson import LessonAssignment
 from rust_sensei.domain.progress import ProgressEvent
 from rust_sensei.domain.setup import SetupCheck
 from rust_sensei.domain.skill import SkillModel, SkillScore
+from rust_sensei.domain.workspace import AssignmentWorkspaceSuggestion
 from rust_sensei.dto.assessment import (
     AssessmentResultDTO,
     AssessmentScoringProvenanceDTO,
@@ -19,6 +20,7 @@ from rust_sensei.dto.assessment import (
 )
 from rust_sensei.dto.attempt import CommandRunMetadataDTO
 from rust_sensei.dto.lesson import (
+    AssignmentWorkspaceSuggestionDTO,
     CurriculumConceptDTO,
     LessonAssignmentDTO,
     LessonCommandDTO,
@@ -156,6 +158,20 @@ def lesson_assignment_to_dto(assignment: LessonAssignment) -> LessonAssignmentDT
     )
 
 
+def workspace_suggestion_to_dto(
+    suggestion: AssignmentWorkspaceSuggestion,
+) -> AssignmentWorkspaceSuggestionDTO:
+    return AssignmentWorkspaceSuggestionDTO(
+        assignment_id=suggestion.assignment_id,
+        workspace_dir=suggestion.workspace_dir,
+        package_root=suggestion.package_root,
+        lesson_file_path=suggestion.lesson_file_path,
+        report_file_path=suggestion.report_file_path,
+        open_path=suggestion.open_path,
+        create_cargo_package=suggestion.create_cargo_package,
+    )
+
+
 def lesson_plan_to_dto(concept: Concept, variant: LessonVariant) -> LessonPlanDTO:
     return LessonPlanDTO(
         lesson_id=_lesson_id(concept.concept_id, variant.variant_id),
@@ -169,6 +185,7 @@ def lesson_plan_to_dto(concept: Concept, variant: LessonVariant) -> LessonPlanDT
         ],
         hints=list(variant.hints),
         rubric_ids=list(concept.rubric_ids),
+        workspace_artifact_policy=variant.workspace_artifact_policy,
     )
 
 

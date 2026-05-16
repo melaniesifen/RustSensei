@@ -3,6 +3,8 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
+from rust_sensei.domain.enums import WorkspaceArtifactPolicy
+
 VALID_RUBRIC_IDS = {
     "rust_correctness",
     "rust_idioms",
@@ -32,6 +34,9 @@ class LessonVariant:
     success_criteria: list[str]
     hints: list[str] = field(default_factory=list)
     lesson_commands: list[LessonCommand] = field(default_factory=list)
+    workspace_artifact_policy: WorkspaceArtifactPolicy = (
+        WorkspaceArtifactPolicy.CARGO_BINARY_PACKAGE
+    )
 
 
 @dataclass(frozen=True)
@@ -119,6 +124,12 @@ def _variant_from_dict(data: dict[str, Any]) -> LessonVariant:
             )
             for item in data.get("lesson_commands", [])
         ],
+        workspace_artifact_policy=WorkspaceArtifactPolicy(
+            data.get(
+                "workspace_artifact_policy",
+                WorkspaceArtifactPolicy.CARGO_BINARY_PACKAGE.value,
+            )
+        ),
     )
 
 
@@ -148,6 +159,11 @@ def _validate_rubrics(concept: Concept) -> None:
 
 def _validate_commands(concept: Concept) -> None:
     for variant in concept.variants:
+        if variant.workspace_artifact_policy not in set(WorkspaceArtifactPolicy):
+            raise ValueError(
+                f"Variant {variant.variant_id} has invalid workspace artifact policy "
+                f"{variant.workspace_artifact_policy}"
+            )
         for command in variant.lesson_commands:
             if command.risk_level not in VALID_RISK_LEVELS:
                 raise ValueError(

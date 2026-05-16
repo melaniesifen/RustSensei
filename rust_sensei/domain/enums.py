@@ -38,6 +38,11 @@ class NextAction(str, Enum):
     BRANCH = "branch"
 
 
+class WorkspaceArtifactPolicy(str, Enum):
+    CARGO_BINARY_PACKAGE = "cargo_binary_package"
+    MANUAL_CARGO_PROJECT = "manual_cargo_project"
+
+
 class LearnerSignalType(str, Enum):
     CONFUSION = "confusion"
     CONFIDENCE = "confidence"

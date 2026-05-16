@@ -3,7 +3,7 @@ from __future__ import annotations
 from pydantic import Field
 
 from rust_sensei.constants import ACTIVE_LEARNER_ID
-from rust_sensei.domain.enums import AssignmentStatus
+from rust_sensei.domain.enums import AssignmentStatus, WorkspaceArtifactPolicy
 from rust_sensei.dto.common import StrictDTO
 
 
@@ -24,6 +24,17 @@ class LessonPlanDTO(StrictDTO):
     lesson_commands: list[LessonCommandDTO] = Field(default_factory=list)
     hints: list[str] = Field(default_factory=list)
     rubric_ids: list[str]
+    workspace_artifact_policy: WorkspaceArtifactPolicy
+
+
+class AssignmentWorkspaceSuggestionDTO(StrictDTO):
+    assignment_id: str
+    workspace_dir: str
+    package_root: str | None = None
+    lesson_file_path: str | None = None
+    report_file_path: str
+    open_path: str
+    create_cargo_package: bool
 
 
 class CurriculumConceptDTO(StrictDTO):
@@ -67,3 +78,4 @@ class GetNextLessonResponse(StrictDTO):
     reused_active_assignment: bool
     pending_assessment: bool = False
     pending_attempt_id: str | None = None
+    workspace_suggestion: AssignmentWorkspaceSuggestionDTO | None = None

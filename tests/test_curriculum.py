@@ -43,6 +43,10 @@ def test_default_variant_matches_default_difficulty():
     assert curriculum.concepts["variables"].branch_targets == {
         "local_branch": ["variables"]
     }
+    assert (
+        curriculum.concepts["variables"].default_variant().workspace_artifact_policy
+        == "cargo_binary_package"
+    )
 
 
 def test_curriculum_rejects_missing_default_difficulty_variant():
@@ -123,6 +127,34 @@ def test_curriculum_rejects_unknown_branch_target():
                             {
                                 "variant_id": "intro_001",
                                 "difficulty": "intro",
+                                "prompt": "Intro",
+                                "success_criteria": ["Compiles"],
+                            }
+                        ],
+                    }
+                ],
+            }
+        )
+
+
+def test_curriculum_rejects_unknown_workspace_artifact_policy():
+    with pytest.raises(ValueError):
+        Curriculum.from_dict(
+            {
+                "curriculum_version": "test",
+                "concepts": [
+                    {
+                        "concept_id": "variables",
+                        "title": "Variables",
+                        "order": 1,
+                        "default_difficulty": "intro",
+                        "learner_command": "cargo run",
+                        "rubric_ids": ["rust_correctness"],
+                        "variants": [
+                            {
+                                "variant_id": "intro_001",
+                                "difficulty": "intro",
+                                "workspace_artifact_policy": "unknown",
                                 "prompt": "Intro",
                                 "success_criteria": ["Compiles"],
                             }
