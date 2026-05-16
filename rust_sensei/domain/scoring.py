@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from dataclasses import replace
+from dataclasses import dataclass, replace
 from datetime import datetime
 from statistics import mean
 from typing import Any, Protocol
@@ -100,6 +100,24 @@ DIFFICULTY_WEIGHTS = {
     Difficulty.CHALLENGE: 1.00,
     Difficulty.ADVANCED: 1.00,
 }
+
+
+@dataclass(frozen=True)
+class _ConfidenceEvidence:
+    has_code: bool
+    has_compiler_output: bool
+    has_runtime_or_test_output: bool
+    has_learner_notes: bool
+    has_command_metadata: bool
+    has_primary_command_metadata: bool
+    has_assignment: bool
+    has_primary_execution_artifact: bool
+
+
+@dataclass(frozen=True)
+class _ConfidenceQualityAdjustment:
+    delta: float
+    explanation: str
 
 
 class AssessmentScorer(Protocol):
@@ -351,6 +369,7 @@ def _confidence_breakdown(
         task_difficulty_weight=_task_difficulty_weight(difficulty, observed_score),
         recency_weight=1.00,
         overall=0.0,
+        explanation=_confidence_explanation(attempt, difficulty, observed_score),
     )
     return replace(
         breakdown,
@@ -359,54 +378,83 @@ def _confidence_breakdown(
 
 
 def _critical_evidence_cap(attempt: AttemptSubmission) -> float | None:
-    has_code = _has_text(attempt.code)
-    has_primary_execution_artifact = any(
-        [
-            _has_text(attempt.compiler_output),
-            _has_text(attempt.runtime_output),
-            _has_text(attempt.test_output),
-            _has_primary_command_metadata(attempt),
-        ]
-    )
-
-    if not has_code and not has_primary_execution_artifact:
+    evidence = _confidence_evidence(attempt)
+    if not evidence.has_code and not evidence.has_primary_execution_artifact:
         return 0.44
-    if not has_code:
+    if not evidence.has_code:
         return 0.59
     return None
 
 
+def _confidence_explanation(
+    attempt: AttemptSubmission,
+    difficulty: str,
+    observed_score: float,
+) -> list[str]:
+    reasons = []
+    reasons.extend(_critical_evidence_explanation(attempt))
+    reasons.extend(_completeness_explanation(attempt))
+    reasons.extend(_quality_explanation(attempt))
+    reasons.extend(_difficulty_explanation(difficulty, observed_score))
+    if not reasons:
+        reasons.append("Submitted evidence supports the confidence score.")
+    return reasons
+
+
+def _critical_evidence_explanation(attempt: AttemptSubmission) -> list[str]:
+    evidence = _confidence_evidence(attempt)
+    if not evidence.has_code and not evidence.has_primary_execution_artifact:
+        return ["Code and primary execution evidence were missing, limiting confidence."]
+    if not evidence.has_code:
+        return ["Code was missing, limiting confidence."]
+    return []
+
+
+def _completeness_explanation(attempt: AttemptSubmission) -> list[str]:
+    evidence = _confidence_evidence(attempt)
+    reasons = []
+    if not evidence.has_compiler_output:
+        reasons.append("Compiler output was not submitted.")
+    if not evidence.has_primary_execution_artifact:
+        reasons.append("Runtime or test execution evidence was not submitted.")
+    if not evidence.has_learner_notes:
+        reasons.append("Learner notes were not submitted.")
+    return reasons
+
+
+def _quality_explanation(attempt: AttemptSubmission) -> list[str]:
+    return [
+        adjustment.explanation
+        for adjustment in _quality_adjustments(attempt)
+    ]
+
+
+def _difficulty_explanation(difficulty: str, observed_score: float) -> list[str]:
+    difficulty_value = _difficulty_or_default(difficulty)
+    if (
+        difficulty_value in {Difficulty.CHALLENGE, Difficulty.ADVANCED}
+        and observed_score < ADVANCED_FAILURE_SCORE_THRESHOLD
+    ):
+        return ["Low scores on a harder task reduced confidence."]
+    return []
+
+
 def _evidence_completeness(attempt: AttemptSubmission) -> float:
+    evidence = _confidence_evidence(attempt)
     score = 0.0
-    score += 0.35 if _has_text(attempt.code) else 0.0
-    score += 0.25 if _has_text(attempt.compiler_output) else 0.0
-    score += (
-        0.15
-        if _has_text(attempt.runtime_output) or _has_text(attempt.test_output)
-        else 0.0
-    )
-    score += 0.10 if _has_text(attempt.learner_notes) else 0.0
-    score += 0.10 if attempt.command_run_metadata else 0.0
-    score += 0.05 if attempt.assignment_id else 0.0
+    score += 0.35 if evidence.has_code else 0.0
+    score += 0.25 if evidence.has_compiler_output else 0.0
+    score += 0.15 if evidence.has_runtime_or_test_output else 0.0
+    score += 0.10 if evidence.has_learner_notes else 0.0
+    score += 0.10 if evidence.has_command_metadata else 0.0
+    score += 0.05 if evidence.has_assignment else 0.0
     return round(min(score, 1.0), 2)
 
 
 def _evidence_quality(attempt: AttemptSubmission) -> float:
     quality = 1.0
-    if _has_text(attempt.code) and len(attempt.code.strip()) < 20:
-        quality -= 0.25
-    if attempt.output_truncated and not attempt.truncation_reason:
-        quality -= 0.15
-    if _has_text(attempt.compiler_output) and not _output_relevant_to_lesson(
-        attempt.compiler_output
-    ):
-        quality -= 0.20
-    if _evidence_contradicts_agent_notes(attempt):
-        quality -= 0.20
-    if _has_text(attempt.learner_notes) and len(attempt.learner_notes.strip()) >= 40:
-        quality += 0.05
-    if attempt.command_run_metadata:
-        quality += 0.05
+    for adjustment in _quality_adjustments(attempt):
+        quality += adjustment.delta
     return round(_clamp(quality), 2)
 
 
@@ -567,19 +615,13 @@ def _feedback_summary(assessment_status: str, confidence: float) -> str:
 
 
 def _missing_evidence(attempt: AttemptSubmission) -> list[str]:
+    evidence = _confidence_evidence(attempt)
     missing = []
-    if not _has_text(attempt.code):
+    if not evidence.has_code:
         missing.append("code")
-    if not any(
-        [
-            _has_text(attempt.compiler_output),
-            _has_text(attempt.runtime_output),
-            _has_text(attempt.test_output),
-            _has_primary_command_metadata(attempt),
-        ]
-    ):
+    if not evidence.has_primary_execution_artifact:
         missing.append("execution_output")
-    if not _has_text(attempt.learner_notes):
+    if not evidence.has_learner_notes:
         missing.append("learner_notes")
     return missing
 
@@ -678,6 +720,82 @@ def _evidence_contradicts_agent_notes(attempt: AttemptSubmission) -> bool:
         "fails" in notes
         and _has_success_signal(attempt)
     )
+
+
+def _confidence_evidence(attempt: AttemptSubmission) -> _ConfidenceEvidence:
+    has_code = _has_text(attempt.code)
+    has_compiler_output = _has_text(attempt.compiler_output)
+    has_runtime_or_test_output = (
+        _has_text(attempt.runtime_output) or _has_text(attempt.test_output)
+    )
+    has_primary_command_metadata = _has_primary_command_metadata(attempt)
+    return _ConfidenceEvidence(
+        has_code=has_code,
+        has_compiler_output=has_compiler_output,
+        has_runtime_or_test_output=has_runtime_or_test_output,
+        has_learner_notes=_has_text(attempt.learner_notes),
+        has_command_metadata=bool(attempt.command_run_metadata),
+        has_primary_command_metadata=has_primary_command_metadata,
+        has_assignment=bool(attempt.assignment_id),
+        has_primary_execution_artifact=any(
+            [
+                has_compiler_output,
+                has_runtime_or_test_output,
+                has_primary_command_metadata,
+            ]
+        ),
+    )
+
+
+def _quality_adjustments(
+    attempt: AttemptSubmission,
+) -> list[_ConfidenceQualityAdjustment]:
+    adjustments = []
+    if _has_text(attempt.code) and len(attempt.code.strip()) < 20:
+        adjustments.append(
+            _ConfidenceQualityAdjustment(
+                delta=-0.25,
+                explanation="Submitted code was very short, reducing evidence quality.",
+            )
+        )
+    if attempt.output_truncated and not attempt.truncation_reason:
+        adjustments.append(
+            _ConfidenceQualityAdjustment(
+                delta=-0.15,
+                explanation="Output was marked truncated without a truncation reason.",
+            )
+        )
+    if _has_text(attempt.compiler_output) and not _output_relevant_to_lesson(
+        attempt.compiler_output
+    ):
+        adjustments.append(
+            _ConfidenceQualityAdjustment(
+                delta=-0.20,
+                explanation="Compiler output was not clearly related to the lesson.",
+            )
+        )
+    if _evidence_contradicts_agent_notes(attempt):
+        adjustments.append(
+            _ConfidenceQualityAdjustment(
+                delta=-0.20,
+                explanation="Agent notes conflicted with submitted execution evidence.",
+            )
+        )
+    if _has_text(attempt.learner_notes) and len(attempt.learner_notes.strip()) >= 40:
+        adjustments.append(
+            _ConfidenceQualityAdjustment(
+                delta=0.05,
+                explanation="Learner notes added enough context to improve confidence.",
+            )
+        )
+    if attempt.command_run_metadata:
+        adjustments.append(
+            _ConfidenceQualityAdjustment(
+                delta=0.05,
+                explanation="Structured command metadata supported the evidence review.",
+            )
+        )
+    return adjustments
 
 
 def _has_primary_command_metadata(attempt: AttemptSubmission) -> bool:

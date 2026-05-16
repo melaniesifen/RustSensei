@@ -221,6 +221,7 @@ class ConfidenceBreakdownDTO(BaseModel):
     task_difficulty_weight: float
     recency_weight: float
     overall: float
+    explanation: list[str] = Field(default_factory=list)
 
 
 class FeedbackItemDTO(BaseModel):
@@ -543,6 +544,7 @@ class ConfidenceBreakdown:
     task_difficulty_weight: float
     recency_weight: float
     overall: float
+    explanation: list[str] = field(default_factory=list)
 
 
 @dataclass

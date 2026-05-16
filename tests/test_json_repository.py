@@ -455,6 +455,7 @@ def test_assessment_repository_saves_assessment_with_existing_wrapper(tmp_path):
     assert saved.assessment_id == "assessment_000001"
     assert saved.scoring_provenance is not None
     assert saved.scoring_provenance.scorer_type == "deterministic"
+    assert saved.confidence_breakdown.explanation == ["test confidence"]
     assert repositories.assessment_repository().get_assessment_by_attempt_id(
         "attempt_1"
     ) == saved
@@ -476,6 +477,7 @@ def test_assessment_repository_reads_legacy_assessment_without_scoring_provenanc
     state_path = tmp_path / "state.json"
     state = json.loads(state_path.read_text(encoding="utf-8"))
     del state["assessments"][0]["scoring_provenance"]
+    del state["assessments"][0]["confidence_breakdown"]["explanation"]
     state_path.write_text(json.dumps(state), encoding="utf-8")
 
     saved = repositories.assessment_repository().get_assessment_by_attempt_id(
@@ -484,6 +486,7 @@ def test_assessment_repository_reads_legacy_assessment_without_scoring_provenanc
 
     assert saved is not None
     assert saved.scoring_provenance is None
+    assert saved.confidence_breakdown.explanation == []
 
 
 def test_assessment_repository_profile_updater_uses_current_profile_inside_transaction(
@@ -814,6 +817,7 @@ def _assessment(attempt_id, assignment_id):
             task_difficulty_weight=0.70,
             recency_weight=1.0,
             overall=0.75,
+            explanation=["test confidence"],
         ),
         missing_evidence=[],
         feedback_items=[],

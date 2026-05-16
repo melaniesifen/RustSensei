@@ -62,6 +62,7 @@ def confidence_breakdown_to_dto(
         task_difficulty_weight=breakdown.task_difficulty_weight,
         recency_weight=breakdown.recency_weight,
         overall=breakdown.overall,
+        explanation=list(breakdown.explanation),
     )
 
 

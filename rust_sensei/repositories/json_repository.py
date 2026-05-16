@@ -809,6 +809,7 @@ def _confidence_breakdown_from_state(data: dict[str, Any]) -> ConfidenceBreakdow
         task_difficulty_weight=float(data["task_difficulty_weight"]),
         recency_weight=float(data["recency_weight"]),
         overall=float(data["overall"]),
+        explanation=list(data.get("explanation", [])),
     )
 
 
@@ -824,6 +825,7 @@ def _confidence_breakdown_to_state(
         "task_difficulty_weight": breakdown.task_difficulty_weight,
         "recency_weight": breakdown.recency_weight,
         "overall": breakdown.overall,
+        "explanation": list(breakdown.explanation),
     }
 
 

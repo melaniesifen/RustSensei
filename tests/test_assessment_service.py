@@ -428,6 +428,7 @@ def test_assess_attempt_persists_scores_confidence_and_marks_assessed(tmp_path):
     assert assessment.scoring_provenance.scorer_type == "deterministic"
     assert assessment.scoring_provenance.scorer_name == "deterministic-rubric"
     assert assessment.confidence == assessment.confidence_breakdown.overall
+    assert assessment.confidence_breakdown.explanation
     assert assessment.confidence >= 0.70
     assert set(assessment.rubric_scores) == {
         "rust_correctness",
@@ -444,6 +445,9 @@ def test_assess_attempt_persists_scores_confidence_and_marks_assessed(tmp_path):
     assert assignment.status == AssignmentStatus.ASSESSED
     assert stored is not None
     assert stored.assessment_id == assessment.assessment_id
+    assert stored.confidence_breakdown.explanation == (
+        assessment.confidence_breakdown.explanation
+    )
     assert profile is not None
     assert profile.skill_model.rust_concepts[CARGO_HELLO_WORLD_CONCEPT_ID].score == 0.80
     assert profile.skill_model.rust_concepts[CARGO_HELLO_WORLD_CONCEPT_ID].confidence == 0.50

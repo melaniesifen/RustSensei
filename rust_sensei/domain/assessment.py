@@ -21,6 +21,7 @@ class ConfidenceBreakdown:
     task_difficulty_weight: float
     recency_weight: float
     overall: float
+    explanation: list[str] = field(default_factory=list)
 
 
 @dataclass(frozen=True)

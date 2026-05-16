@@ -79,6 +79,60 @@ def test_build_assessment_scores_compiler_failure_with_notes():
     assert assessment.next_action == NextAction.SIMPLIFY
 
 
+def test_build_assessment_explains_missing_confidence_evidence():
+    assessment = build_assessment(
+        attempt=AttemptSubmission(
+            attempt_id="attempt_1",
+            learner_id="local-default",
+            assignment_id="assign_1",
+            lesson_id="lesson_1",
+            client_request_id=None,
+            client_request_fingerprint=None,
+            workspace_root=None,
+            code=None,
+            learner_notes="I have not run this yet.",
+            submitted_at=_fixed_now(),
+        ),
+        concept=_concept(["rust_correctness", "compiler_error_handling"]),
+        difficulty=Difficulty.INTRO,
+        now=_fixed_now(),
+    )
+
+    assert assessment.confidence_breakdown.critical_evidence_cap == 0.44
+    assert (
+        "Code and primary execution evidence were missing, limiting confidence."
+        in assessment.confidence_breakdown.explanation
+    )
+    assert "Compiler output was not submitted." in (
+        assessment.confidence_breakdown.explanation
+    )
+
+
+def test_build_assessment_explains_conflicting_agent_notes():
+    assessment = build_assessment(
+        attempt=AttemptSubmission(
+            attempt_id="attempt_1",
+            learner_id="local-default",
+            assignment_id="assign_1",
+            lesson_id="lesson_1",
+            client_request_id=None,
+            client_request_fingerprint=None,
+            workspace_root=None,
+            code="fn main() { println!(\"hi\"); }",
+            compiler_output="test result: ok. 1 passed; 0 failed",
+            agent_notes="The submitted solution fails to compile.",
+            submitted_at=_fixed_now(),
+        ),
+        concept=_concept(["rust_correctness"]),
+        difficulty=Difficulty.STANDARD,
+        now=_fixed_now(),
+    )
+
+    assert "Agent notes conflicted with submitted execution evidence." in (
+        assessment.confidence_breakdown.explanation
+    )
+
+
 def test_validate_rubric_ids_rejects_empty_list():
     with pytest.raises(ValidationError):
         validate_rubric_ids([])

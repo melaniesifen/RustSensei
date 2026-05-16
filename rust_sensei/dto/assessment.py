@@ -18,6 +18,7 @@ class ConfidenceBreakdownDTO(StrictDTO):
     task_difficulty_weight: float
     recency_weight: float
     overall: float
+    explanation: list[str] = Field(default_factory=list)
 
 
 class FeedbackItemDTO(StrictDTO):
