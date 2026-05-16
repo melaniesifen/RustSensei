@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import inspect
 from collections.abc import Callable
 from typing import Any, TypeVar
 
@@ -42,11 +43,19 @@ def test_register_handlers_exposes_expected_mcp_surface(tmp_path):
     ]
 
 
-def test_registered_tools_validate_payload_and_return_json_payloads(tmp_path):
+def test_registered_tools_expose_direct_parameters(tmp_path):
     mcp = _FakeMCP()
     register_handlers(mcp, ServiceFactory(state_dir=tmp_path))
 
-    response = mcp.tools["start_session"]({"initial_rust_level": "new"})
+    for tool in mcp.tools.values():
+        assert "payload" not in inspect.signature(tool).parameters
+
+
+def test_registered_tools_validate_inputs_and_return_json_payloads(tmp_path):
+    mcp = _FakeMCP()
+    register_handlers(mcp, ServiceFactory(state_dir=tmp_path))
+
+    response = mcp.tools["start_session"](initial_rust_level="new")
 
     assert response["learner_id"] == "local-default"
     assert response["placement_required"] is False
@@ -56,30 +65,24 @@ def test_registered_tools_validate_payload_and_return_json_payloads(tmp_path):
 def test_registered_tools_route_successful_lesson_flow(tmp_path):
     mcp = _FakeMCP()
     register_handlers(mcp, ServiceFactory(state_dir=tmp_path))
-    mcp.tools["start_session"]({"initial_rust_level": "new"})
+    mcp.tools["start_session"](initial_rust_level="new")
 
-    profile = mcp.tools["get_learner_profile"]({})
-    lesson = mcp.tools["get_next_lesson"]({})
-    progress = mcp.tools["get_progress_summary"]({})
-    setup = mcp.tools["get_setup_status"]({})
+    profile = mcp.tools["get_learner_profile"]()
+    lesson = mcp.tools["get_next_lesson"]()
+    progress = mcp.tools["get_progress_summary"]()
+    setup = mcp.tools["get_setup_status"]()
     signal = mcp.tools["update_learner_signal"](
-        {
-            "signal_type": "confidence",
-            "value": 0.4,
-            "notes": "Still learning cargo basics.",
-        }
+        signal_type="confidence",
+        value=0.4,
+        notes="Still learning cargo basics.",
     )
     attempt = mcp.tools["submit_attempt"](
-        {
-            "assignment_id": lesson["assignment"]["assignment_id"],
-            "code": HELLO_RUST_CODE,
-            "compiler_output": "Finished dev profile",
-        }
+        assignment_id=lesson["assignment"]["assignment_id"],
+        code=HELLO_RUST_CODE,
+        compiler_output="Finished dev profile",
     )
     assessment = mcp.tools["assess_attempt"](
-        {
-            "attempt_id": attempt["attempt_id"],
-        }
+        attempt_id=attempt["attempt_id"],
     )
 
     assert profile["profile"]["learner_id"] == "local-default"
@@ -95,12 +98,7 @@ def test_registered_tools_return_structured_validation_errors(tmp_path):
     mcp = _FakeMCP()
     register_handlers(mcp, ServiceFactory(state_dir=tmp_path))
 
-    response = mcp.tools["start_session"](
-        {
-            "initial_rust_level": "new",
-            "unexpected_field": True,
-        }
-    )
+    response = mcp.tools["start_session"](initial_rust_level="not-a-level")
 
     assert response["error"]["error_code"] == "validation_error"
     assert response["error"]["retryable"] is False
@@ -119,7 +117,7 @@ def test_registered_resources_return_structured_service_errors(tmp_path):
 def test_registered_resources_return_json_payloads(tmp_path):
     mcp = _FakeMCP()
     register_handlers(mcp, ServiceFactory(state_dir=tmp_path))
-    mcp.tools["start_session"]({"initial_rust_level": "new"})
+    mcp.tools["start_session"](initial_rust_level="new")
 
     profile = mcp.resources[MCP_PROFILE_ACTIVE_RESOURCE_URI]()
     progress = mcp.resources[MCP_PROGRESS_SUMMARY_RESOURCE_URI]()
