@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from dataclasses import dataclass
 
 from rust_sensei.constants import ACTIVE_LEARNER_ID
 from rust_sensei.domain.assessment import AssessmentResult
@@ -38,6 +39,11 @@ FOCUS_COMPLETE_ACTIVE_ASSIGNMENT = "complete_active_assignment"
 FOCUS_ASSESS_PENDING_ATTEMPT = "assess_pending_attempt"
 FOCUS_RETRY_REPEATED_CONCEPT = "retry_repeated_concept"
 FOCUS_CONTINUE_ACTIVE_CONCEPT = "continue_active_concept"
+
+
+@dataclass(frozen=True)
+class _ProgressSummaryContext:
+    order_by_concept_id: dict[str, int]
 
 
 class ProgressService:
@@ -81,18 +87,23 @@ class ProgressService:
         all_events = self._progress_event_repository.list_events_for_learner(
             request.learner_id
         )
+        context = _ProgressSummaryContext(
+            order_by_concept_id=self._order_by_concept_id()
+        )
 
         completed_concepts = self._completed_concepts(
             profile=profile,
             assignments=assignments,
             assessments=assessments,
+            context=context,
         )
         repeated_concepts = self._concepts_with_next_action(
             assignments=assignments,
             assessments=assessments,
             action=NextAction.REPEAT,
+            context=context,
         )
-        skipped_concepts = self._skipped_concepts(all_events)
+        skipped_concepts = self._skipped_concepts(all_events, context=context)
         active_assignment = _assignment_with_status(
             assignments,
             AssignmentStatus.ACTIVE,
@@ -126,6 +137,7 @@ class ProgressService:
         profile: LearnerProfile,
         assignments: list[LessonAssignment],
         assessments: list[AssessmentResult],
+        context: _ProgressSummaryContext,
     ) -> list[str]:
         completed_from_skill_model = {
             concept_id
@@ -136,9 +148,11 @@ class ProgressService:
             assignments=assignments,
             assessments=assessments,
             actions=COMPLETION_ACTIONS,
+            context=context,
         )
-        return self._sort_concept_ids(
-            completed_from_skill_model | set(completed_from_assessments)
+        return _sort_concept_ids(
+            completed_from_skill_model | set(completed_from_assessments),
+            context.order_by_concept_id,
         )
 
     def _concepts_with_next_action(
@@ -146,11 +160,13 @@ class ProgressService:
         assignments: list[LessonAssignment],
         assessments: list[AssessmentResult],
         action: NextAction,
+        context: _ProgressSummaryContext,
     ) -> list[str]:
         return self._concepts_with_next_actions(
             assignments=assignments,
             assessments=assessments,
             actions={action},
+            context=context,
         )
 
     def _concepts_with_next_actions(
@@ -158,6 +174,7 @@ class ProgressService:
         assignments: list[LessonAssignment],
         assessments: list[AssessmentResult],
         actions: set[NextAction],
+        context: _ProgressSummaryContext,
     ) -> list[str]:
         concept_by_assignment_id = {
             assignment.assignment_id: assignment.concept_id
@@ -169,9 +186,13 @@ class ProgressService:
             if assessment.next_action in actions
             and assessment.assignment_id in concept_by_assignment_id
         }
-        return self._sort_concept_ids(concept_ids)
+        return _sort_concept_ids(concept_ids, context.order_by_concept_id)
 
-    def _skipped_concepts(self, events: Iterable[ProgressEvent]) -> list[str]:
+    def _skipped_concepts(
+        self,
+        events: Iterable[ProgressEvent],
+        context: _ProgressSummaryContext,
+    ) -> list[str]:
         concept_ids = {
             str(event.details["concept_id"])
             for event in events
@@ -182,7 +203,7 @@ class ProgressService:
             }
             and "concept_id" in event.details
         }
-        return self._sort_concept_ids(concept_ids)
+        return _sort_concept_ids(concept_ids, context.order_by_concept_id)
 
     def _recommended_focus(
         self,
@@ -209,26 +230,19 @@ class ProgressService:
 
         return FOCUS_START_SESSION
 
-    def _sort_concept_ids(self, concept_ids: Iterable[str]) -> list[str]:
+    def _order_by_concept_id(self) -> dict[str, int]:
         curriculum = self._curriculum_repository.get_curriculum()
-        order_by_concept_id = {
+        return {
             concept.concept_id: concept.order
             for concept in curriculum.concepts.values()
         }
-        return sorted(
-            set(concept_ids),
-            key=lambda concept_id: (
-                order_by_concept_id.get(concept_id, len(order_by_concept_id)),
-                concept_id,
-            ),
-        )
 
     @staticmethod
     def _trend(assessments: list[AssessmentResult]) -> str:
         if not assessments:
             return TREND_NO_ASSESSMENTS
 
-        latest = assessments[-1]
+        latest = max(assessments, key=lambda assessment: assessment.created_at)
         if latest.next_action in {NextAction.REPEAT, NextAction.SIMPLIFY}:
             return TREND_NEEDS_PRACTICE
         if latest.next_action == NextAction.ACCELERATE:
@@ -243,6 +257,19 @@ class ProgressService:
                 learner_id=request.learner_id,
                 active_learner_id=ACTIVE_LEARNER_ID,
             )
+
+
+def _sort_concept_ids(
+    concept_ids: Iterable[str],
+    order_by_concept_id: dict[str, int],
+) -> list[str]:
+    return sorted(
+        set(concept_ids),
+        key=lambda concept_id: (
+            order_by_concept_id.get(concept_id, len(order_by_concept_id)),
+            concept_id,
+        ),
+    )
 
 
 def _is_completed(score: SkillScore) -> bool:

@@ -1,9 +1,18 @@
 from __future__ import annotations
 
+from datetime import timedelta
+
 import pytest
 
-from rust_sensei.domain.enums import RustLevel
+from rust_sensei.domain.assessment import (
+    AssessmentResult,
+    AssessmentScoringProvenance,
+    ConfidenceBreakdown,
+)
+from rust_sensei.domain.curriculum import Concept, Curriculum
+from rust_sensei.domain.enums import NextAction, RustLevel
 from rust_sensei.domain.progress import ProgressEvent, ProgressEventType
+from rust_sensei.domain.skill import SkillScore
 from rust_sensei.dto.assessment import AssessAttemptRequest
 from rust_sensei.dto.attempt import SubmitAttemptRequest
 from rust_sensei.dto.lesson import GetNextLessonRequest
@@ -208,6 +217,49 @@ def test_get_progress_summary_derives_skipped_concepts_from_all_events(tmp_path)
     )
 
 
+def test_get_progress_summary_loads_curriculum_once(tmp_path):
+    repositories = JsonRepositoryFactory(tmp_path)
+    session_service = SessionService(
+        learner_repository=repositories.learner_repository(),
+        learner_signal_repository=repositories.learner_signal_repository(),
+        now=lambda: TEST_NOW,
+    )
+    curriculum_repository = _CountingCurriculumRepository(
+        repositories.curriculum_repository()
+    )
+    progress_service = ProgressService(
+        learner_repository=repositories.learner_repository(),
+        assignment_repository=repositories.assignment_repository(),
+        assessment_repository=repositories.assessment_repository(),
+        curriculum_repository=curriculum_repository,
+        progress_event_repository=repositories.progress_event_repository(),
+    )
+    session_service.start_session(StartSessionRequest(initial_rust_level=RustLevel.NEW))
+
+    progress_service.get_progress_summary(GetProgressSummaryRequest())
+
+    assert curriculum_repository.get_curriculum_calls == 1
+
+
+def test_progress_trend_uses_latest_assessment_created_at():
+    older_repeat = _assessment_result(
+        attempt_id="attempt_1",
+        assignment_id="assign_1",
+        next_action=NextAction.REPEAT,
+        minutes_after_test_now=0,
+    )
+    newer_accelerate = _assessment_result(
+        attempt_id="attempt_2",
+        assignment_id="assign_2",
+        next_action=NextAction.ACCELERATE,
+        minutes_after_test_now=1,
+    )
+
+    assert ProgressService._trend([newer_accelerate, older_repeat]) == (
+        TREND_ACCELERATING
+    )
+
+
 def _services(tmp_path):
     repositories = JsonRepositoryFactory(tmp_path)
     now = lambda: TEST_NOW
@@ -263,4 +315,63 @@ def _progress_event(
         previous_status=None,
         new_status=None,
         created_at=TEST_NOW,
+    )
+
+
+class _CountingCurriculumRepository:
+    def __init__(self, wrapped) -> None:
+        self._wrapped = wrapped
+        self.get_curriculum_calls = 0
+
+    def get_curriculum(self) -> Curriculum:
+        self.get_curriculum_calls += 1
+        return self._wrapped.get_curriculum()
+
+    def get_concept(self, concept_id: str) -> Concept | None:
+        return self._wrapped.get_concept(concept_id)
+
+
+def _assessment_result(
+    attempt_id: str,
+    assignment_id: str,
+    next_action: NextAction,
+    minutes_after_test_now: int,
+) -> AssessmentResult:
+    confidence = 0.80
+    return AssessmentResult(
+        assessment_id=f"assessment_{attempt_id}",
+        attempt_id=attempt_id,
+        assignment_id=assignment_id,
+        scoring_version="test",
+        scoring_provenance=AssessmentScoringProvenance(
+            scorer_type="deterministic",
+            scorer_name="test",
+            scorer_version="test",
+        ),
+        assessment_status="assessed",
+        rubric_scores={
+            "rust_correctness": SkillScore(
+                score=0.80,
+                confidence=confidence,
+                evidence=["test"],
+            ),
+        },
+        confidence_breakdown=ConfidenceBreakdown(
+            critical_evidence_cap=None,
+            evidence_completeness=confidence,
+            evidence_quality=confidence,
+            rubric_confidences={"rust_correctness": confidence},
+            prior_consistency=0.60,
+            task_difficulty_weight=0.70,
+            recency_weight=1.00,
+            overall=confidence,
+        ),
+        missing_evidence=[],
+        feedback_items=[],
+        next_action=next_action,
+        branch_id=None,
+        next_action_reason="test",
+        feedback_summary="test",
+        confidence=confidence,
+        created_at=TEST_NOW + timedelta(minutes=minutes_after_test_now),
     )
