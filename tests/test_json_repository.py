@@ -77,6 +77,123 @@ def test_json_state_rejects_unsupported_schema_version(tmp_path):
         JsonStateStore(state_path).read()
 
 
+def test_json_state_writes_backup_before_replacing_existing_state(tmp_path):
+    state_path = tmp_path / "state.json"
+    store = JsonStateStore(state_path)
+    store.read()
+
+    store.update(lambda state: state["learners"].update({"local-default": {}}))
+
+    backup = json.loads((tmp_path / "state.json.bak").read_text(encoding="utf-8"))
+    current = json.loads(state_path.read_text(encoding="utf-8"))
+    assert backup["state_revision"] == 1
+    assert backup["learners"] == {}
+    assert current["state_revision"] == 2
+    assert "local-default" in current["learners"]
+
+
+def test_json_state_recovers_invalid_json_from_backup(tmp_path):
+    state_path = tmp_path / "state.json"
+    store = JsonStateStore(state_path)
+    store.read()
+    store.update(lambda state: state["learners"].update({"local-default": {}}))
+    backup = json.loads((tmp_path / "state.json.bak").read_text(encoding="utf-8"))
+    state_path.write_text("{", encoding="utf-8")
+
+    recovered = JsonStateStore(state_path).read()
+
+    assert recovered == backup
+    assert json.loads(state_path.read_text(encoding="utf-8")) == backup
+
+
+def test_json_state_recovers_unsupported_schema_from_backup(tmp_path):
+    state_path = tmp_path / "state.json"
+    store = JsonStateStore(state_path)
+    store.read()
+    store.update(lambda state: state["learners"].update({"local-default": {}}))
+    backup = json.loads((tmp_path / "state.json.bak").read_text(encoding="utf-8"))
+    state_path.write_text(
+        json.dumps({"schema_version": 999}),
+        encoding="utf-8",
+    )
+
+    recovered = JsonStateStore(state_path).read()
+
+    assert recovered == backup
+    assert json.loads(state_path.read_text(encoding="utf-8")) == backup
+
+
+def test_json_state_recovers_missing_primary_from_backup(tmp_path):
+    state_path, backup = _state_path_with_backup(tmp_path)
+    state_path.unlink()
+
+    recovered = JsonStateStore(state_path).read()
+
+    assert recovered == backup
+    assert json.loads(state_path.read_text(encoding="utf-8")) == backup
+
+
+def test_json_state_recovers_non_object_state_from_backup(tmp_path):
+    state_path, backup = _state_path_with_backup(tmp_path)
+    state_path.write_text("[]", encoding="utf-8")
+
+    recovered = JsonStateStore(state_path).read()
+
+    assert recovered == backup
+    assert json.loads(state_path.read_text(encoding="utf-8")) == backup
+
+
+def test_json_state_recovers_missing_required_field_from_backup(tmp_path):
+    state_path, backup = _state_path_with_backup(tmp_path)
+    state_path.write_text(
+        json.dumps(
+            {
+                "schema_version": 1,
+                "active_learner_id": "local-default",
+                "learners": {},
+                "lesson_assignments": [],
+                "attempts": [],
+                "assessments": [],
+            }
+        ),
+        encoding="utf-8",
+    )
+
+    recovered = JsonStateStore(state_path).read()
+
+    assert recovered == backup
+    assert json.loads(state_path.read_text(encoding="utf-8")) == backup
+
+
+def test_json_state_recovers_invalid_optional_collection_from_backup(tmp_path):
+    state_path, backup = _state_path_with_backup(tmp_path)
+    current = backup | {"progress_events": {}}
+    state_path.write_text(json.dumps(current), encoding="utf-8")
+
+    recovered = JsonStateStore(state_path).read()
+
+    assert recovered == backup
+    assert json.loads(state_path.read_text(encoding="utf-8")) == backup
+
+
+def test_json_state_rejects_invalid_json_when_backup_is_unusable(tmp_path):
+    state_path = tmp_path / "state.json"
+    state_path.write_text("{", encoding="utf-8")
+    (tmp_path / "state.json.bak").write_text("{", encoding="utf-8")
+
+    with pytest.raises(StorageError):
+        JsonStateStore(state_path).read()
+
+
+def test_json_state_rejects_invalid_shape_when_backup_is_unusable(tmp_path):
+    state_path = tmp_path / "state.json"
+    state_path.write_text("[]", encoding="utf-8")
+    (tmp_path / "state.json.bak").write_text("[]", encoding="utf-8")
+
+    with pytest.raises(StorageError):
+        JsonStateStore(state_path).read()
+
+
 def test_json_state_defaults_missing_current_collections_for_schema_one(tmp_path):
     state_path = tmp_path / "state.json"
     state_path.write_text(
@@ -110,6 +227,15 @@ def test_json_state_defaults_missing_current_collections_for_schema_one(tmp_path
     assert saved.event_id == "event_000001"
     assert state["progress_events"][0]["event_id"] == "event_000001"
     assert state["signals"] == []
+
+
+def _state_path_with_backup(tmp_path):
+    state_path = tmp_path / "state.json"
+    store = JsonStateStore(state_path)
+    store.read()
+    store.update(lambda state: state["learners"].update({"local-default": {}}))
+    backup = json.loads((tmp_path / "state.json.bak").read_text(encoding="utf-8"))
+    return state_path, backup
 
 
 def test_create_profile_if_absent_keeps_original_profile(tmp_path):
