@@ -34,7 +34,7 @@ This design supports these primary requirements:
 
 ### 2.2 Lesson Planning
 
-- `FR-05`: Rust Sensei must choose one of these next-step actions after each assessment: `simplify`, `repeat`, `continue`, `accelerate`, `branch`.
+- `FR-05`: Rust Sensei must choose a next-step action after each assessment. The implemented deterministic v1 scorer currently emits `simplify`, `repeat`, `continue`, or `accelerate`; `branch` is part of the persisted action enum and lesson-selection contract for future branch-capable scorers or manually persisted branch assessments.
 - `FR-06`: The default curriculum target must be general Rust fluency before specialized tracks.
 - `FR-06`: Specialized tracks such as CLI tools, backend services, async, performance, or LeetCode-style practice are out of the v1 default path unless assessment results justify a branch.
 - `FR-01`: A learner who selects `new` may start with Hello World and Cargo basics.
@@ -42,8 +42,8 @@ This design supports these primary requirements:
 
 ### 2.3 Adaptive Curriculum
 
-- `FR-05`: The curriculum must be represented as a structured concept graph, not as a fixed list of static lesson scripts.
-- `FR-05`: Each concept must define prerequisites, competency goals, baseline task criteria, stretch signals, struggle signals, and next-step policy inputs.
+- `FR-05`: The curriculum must be represented as structured concept data, not as a fixed list of static lesson scripts. The implemented v1 seed uses a reduced ordered concept model with variants, rubric ids, learner commands, and branch targets.
+- `FR-05`: Future richer concept graph metadata should include prerequisites, competency goals, baseline task criteria, stretch signals, struggle signals, next concepts, and completion thresholds.
 - `FR-05`: Lesson content must vary based on learner profile, assessment history, confidence, and current concept.
 - `FR-05`: If a learner demonstrates competence beyond the prompt, Rust Sensei must support skipping, compressing, or increasing difficulty for future lessons.
 - `FR-05`: If a learner struggles, Rust Sensei must support smaller prompts, repeated practice, and targeted remediation.
@@ -171,11 +171,11 @@ Core data concepts:
 
 - Learner profile: learner id, initial Rust level, current skill estimates, preferences, and active path.
 - Skill model: Rust concept scores, general programming scores, confidence, and evidence.
-- Concept graph: ordered Rust concepts with prerequisites and adaptive policies.
+- Concept graph: current v1 stores ordered Rust concepts with variants, rubric ids, learner commands, and branch targets; future graph metadata may add prerequisites and richer adaptive policies.
 - Lesson assignment: assignment id, lesson id, concept id, difficulty, variant id, selection rationale, curriculum version, status, and timestamps.
 - Lesson attempt: assignment id, code, outputs, notes, timestamps, and workspace references.
 - Assessment result: attempt id, scores, evidence, feedback, confidence, scoring version, and next-step action.
-- Progress event: append-only record of assignment, attempt, assessment, completion, repeat, simplification, acceleration, branch, reopen, abandonment, or view events.
+- Progress event: append-only record of assignment, attempt, assessment, abandonment, or view events in the implemented v1 flow. Event types also define completion, repeat, simplification, acceleration, branch, skip, and reopen events for future granular adaptive telemetry.
 - Repository interfaces: learner, curriculum, assessment, and session persistence boundaries.
 - JSON storage adapter: v1 implementation of repository interfaces.
 
@@ -264,7 +264,7 @@ Requirement mapping:
 18. Codex calls `assess_attempt` with the `attempt_id`.
 19. Rust Sensei returns an existing assessment for duplicate assessment requests or creates one assessment for a new attempt.
 20. Rust Sensei scores the attempt across rubric dimensions and updates learner state. This satisfies `FR-02`, `FR-03`, and `FR-04`.
-21. Rust Sensei returns feedback, evidence, confidence, and one next-step action: `simplify`, `repeat`, `continue`, `accelerate`, or `branch`. This satisfies `FR-05`.
+21. Rust Sensei returns feedback, evidence, confidence, and one next-step action. The deterministic v1 scorer emits `simplify`, `repeat`, `continue`, or `accelerate`; `branch` remains available in the contract for branch-capable future scoring. This satisfies the current v1 subset of `FR-05`.
 22. Codex writes a lesson report file with the prompt, file paths, command evidence, scores, confidence, feedback, and next action.
 23. Codex presents coaching feedback and the next learning step.
 24. The learner continues the cycle.

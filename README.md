@@ -174,7 +174,8 @@ Recommended implementation order:
 
 1. Add lesson workspace artifact support so the agent creates/reuses a per-assignment Rust file except for project-setup lessons such as `cargo new`, opens the appropriate file or directory in VS Code, and submits generated paths as attempt evidence.
 2. Add lesson report generation so the agent writes a per-assignment `report.md` after assessment with Rust Sensei scores, confidence, feedback, and next action.
-3. Continue hardening validation, privacy limits, and curriculum validation.
+3. Continue hardening validation, privacy limits, and current reduced-shape curriculum validation.
+4. Implement richer adaptive-model gaps when ready: branch-emitting scoring, placement skip events, granular adaptive progress events, and richer concept graph metadata.
 
 ## Documents
 

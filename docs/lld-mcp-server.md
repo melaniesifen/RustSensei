@@ -79,19 +79,46 @@ rust_sensei/
   __init__.py
   __main__.py
   cli.py
+  constants.py
+  errors.py
+  factory.py
+  logging_config.py
   mcp_server.py
   domain/
-    models.py
+    assessment.py
+    attempt.py
     scoring.py
     curriculum.py
+    enums.py
+    learner.py
+    lesson.py
+    lesson_selection.py
+    placement.py
+    progress.py
+    setup.py
+    signal.py
+    skill.py
+    skill_update.py
+  dto/
+    assessment.py
+    attempt.py
+    common.py
+    lesson.py
+    mappers.py
+    progress.py
+    session.py
+    setup.py
   services/
-    session_service.py
-    lesson_service.py
     assessment_service.py
+    environment.py
+    lesson_service.py
+    progress_service.py
+    session_service.py
     setup_service.py
   repositories/
     interfaces.py
     json_repository.py
+    json_state.py
   prompts/
     tutor_prompts.py
   resources/
@@ -522,7 +549,6 @@ class LessonAssignment:
     variant_id: str
     status: Literal["active", "attempted", "assessed", "abandoned"]
     selection_rationale: str
-    next_action_source: str | None
     curriculum_version: str
     created_at: datetime
     updated_at: datetime
@@ -664,39 +690,75 @@ class LearnerSignal:
 ### 4.6 Repository Interfaces
 
 ```python
+from collections.abc import Callable
 from typing import Protocol
 
 
 class LearnerRepository(Protocol):
     def get_active_profile(self) -> LearnerProfile | None: ...
+    def get_profile(self, learner_id: str) -> LearnerProfile | None: ...
     def save_profile(self, profile: LearnerProfile) -> None: ...
+    def create_profile_if_absent(self, profile: LearnerProfile) -> LearnerProfile: ...
 
 
 class AssignmentRepository(Protocol):
     def save_assignment(self, assignment: LessonAssignment) -> None: ...
+    def create_active_assignment_if_absent(
+        self,
+        assignment: LessonAssignment,
+        event_factory: Callable[[LessonAssignment], ProgressEvent] | None = None,
+    ) -> tuple[LessonAssignment, bool]: ...
     def get_assignment(self, assignment_id: str) -> LessonAssignment | None: ...
     def get_active_assignment(self, learner_id: str) -> LessonAssignment | None: ...
-    def update_assignment(self, assignment: LessonAssignment) -> None: ...
+    def get_attempted_assignment(self, learner_id: str) -> LessonAssignment | None: ...
+    def get_latest_assessed_assignment(self, learner_id: str) -> LessonAssignment | None: ...
+    def list_assignments_for_learner(self, learner_id: str) -> list[LessonAssignment]: ...
+    def update_assignment(
+        self,
+        assignment: LessonAssignment,
+        event_factory: Callable[[LessonAssignment], ProgressEvent] | None = None,
+    ) -> None: ...
 
 
 class AttemptRepository(Protocol):
-    def save_attempt(self, attempt: AttemptSubmission) -> None: ...
+    def save_attempt_for_assignment(
+        self,
+        attempt: AttemptSubmission,
+        assignment: LessonAssignment,
+        event_factory: Callable[[AttemptSubmission], ProgressEvent] | None = None,
+    ) -> tuple[AttemptSubmission, bool]: ...
     def get_attempt_by_client_request_id(
         self, learner_id: str, client_request_id: str
     ) -> AttemptSubmission | None: ...
     def get_attempt(self, attempt_id: str) -> AttemptSubmission | None: ...
-    def list_recent_attempts(self, learner_id: str, limit: int) -> list[AttemptSubmission]: ...
+    def get_latest_attempt_for_assignment(self, assignment_id: str) -> AttemptSubmission | None: ...
 
 
 class AssessmentRepository(Protocol):
-    def save_assessment(self, result: AssessmentResult) -> None: ...
+    def save_assessment_for_assignment(
+        self,
+        result: AssessmentResult,
+        assignment: LessonAssignment,
+        event_factory: Callable[[AssessmentResult], ProgressEvent] | None = None,
+    ) -> tuple[AssessmentResult, bool]: ...
+    def save_assessment_for_assignment_and_profile(
+        self,
+        result: AssessmentResult,
+        assignment: LessonAssignment,
+        profile_updater: Callable[[AssessmentResult, LearnerProfile], LearnerProfile],
+        event_factory: Callable[[AssessmentResult], ProgressEvent] | None = None,
+    ) -> tuple[AssessmentResult, bool]: ...
     def get_assessment_by_attempt_id(self, attempt_id: str) -> AssessmentResult | None: ...
-    def list_recent_assessments(self, learner_id: str, limit: int) -> list[AssessmentResult]: ...
+    def get_latest_assessment_for_assignment(self, assignment_id: str) -> AssessmentResult | None: ...
+    def list_assessments_for_assignments(
+        self, assignment_ids: set[str]
+    ) -> list[AssessmentResult]: ...
 
 
 class ProgressEventRepository(Protocol):
-    def save_event(self, event: ProgressEvent) -> None: ...
+    def save_event(self, event: ProgressEvent) -> ProgressEvent: ...
     def list_recent_events(self, learner_id: str, limit: int) -> list[ProgressEvent]: ...
+    def list_events_for_learner(self, learner_id: str) -> list[ProgressEvent]: ...
 
 
 class LearnerSignalRepository(Protocol):
@@ -705,8 +767,8 @@ class LearnerSignalRepository(Protocol):
 
 
 class CurriculumRepository(Protocol):
-    def get_concept(self, concept_id: str) -> ConceptSpec | None: ...
-    def list_concepts(self) -> list[ConceptSpec]: ...
+    def get_curriculum(self) -> Curriculum: ...
+    def get_concept(self, concept_id: str) -> Concept | None: ...
 ```
 
 ### 4.7 JSON State Shape

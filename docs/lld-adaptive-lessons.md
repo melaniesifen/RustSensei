@@ -4,7 +4,7 @@
 
 This document defines how Rust Sensei adapts lessons based on learner performance.
 
-The curriculum is a concept graph. Each concept has prerequisites, competencies, baseline tasks, stretch signals, struggle signals, and next-step policies. Lesson text is generated or assembled from structured lesson specs and learner state.
+The target curriculum is a concept graph. The implemented v1 curriculum is a reduced ordered concept model with prompt variants, rubric ids, learner commands, and branch target metadata. Future richer graph metadata may add prerequisites, competencies, baseline tasks, stretch signals, struggle signals, next concepts, and completion thresholds.
 
 Primary requirement links:
 
@@ -17,18 +17,18 @@ Primary requirement links:
 
 ## 2. Functional Requirements
 
-- `AL-FR-01`: The curriculum must be stored as structured concept specs.
-- `AL-FR-02`: Each concept must define prerequisite concept ids.
-- `AL-FR-03`: Each concept must define baseline competency criteria.
-- `AL-FR-04`: Each concept must define stretch signals.
-- `AL-FR-05`: Each concept must define struggle signals.
+- `AL-FR-01`: The curriculum must be stored as structured concept specs. The implemented v1 shape is reduced but still structured and versioned.
+- `AL-FR-02`: Future richer concept specs should define prerequisite concept ids.
+- `AL-FR-03`: Future richer concept specs should define baseline competency criteria.
+- `AL-FR-04`: Future richer concept specs should define stretch signals.
+- `AL-FR-05`: Future richer concept specs should define struggle signals.
 - `AL-FR-06`: Lesson selection must use learner profile, recent assessments, and confidence.
-- `AL-FR-07`: Lesson selection must support `simplify`, `repeat`, `continue`, `accelerate`, and `branch`.
-- `AL-FR-08`: A learner who starts as `proficient` or `expert` must skip beginner concepts unless later evidence requires remediation.
+- `AL-FR-07`: Lesson selection must support `simplify`, `repeat`, `continue`, `accelerate`, and stored `branch` actions. The current deterministic scorer does not emit `branch`.
+- `AL-FR-08`: Future placement handling should record provisional skips for earlier concepts when a learner starts as `proficient` or `expert`. Current v1 starts the learner at the placement concept but does not emit placement-skip events.
 - `AL-FR-09`: Demonstrated mastery may mark a concept complete without assigning all practice variants.
 - `AL-FR-10`: The system must record why a lesson was selected.
 - `AL-FR-11`: The system must persist assignment history and use it during adaptation.
-- `AL-FR-12`: Placement skips must be represented as provisional skips, not completed concepts.
+- `AL-FR-12`: Placement skips should be represented as provisional skips, not completed concepts, once placement-skip event recording is implemented.
 
 ## 3. Non-Functional Requirements
 
@@ -50,6 +50,8 @@ Adaptive lessons use 4 inputs:
 The lesson service selects a concept, selects a difficulty band, builds a lesson prompt, and returns a next-step rationale.
 
 ### 4.1 Concept Spec Model
+
+The target concept graph shape is:
 
 ```python
 from dataclasses import dataclass
@@ -81,12 +83,30 @@ class ConceptSpec:
     stretch_signals: list[str]
     struggle_signals: list[str]
     rubric_ids: list[str]
+    variants: list[LessonVariantSpec]
     next_concepts: list[str]
     branch_targets: dict[str, list[str]]
     completion_thresholds: dict[str, float]
-    variants: list[LessonVariantSpec]
+```
 
+The implemented v1 `Concept` shape is intentionally smaller:
 
+```python
+@dataclass(frozen=True)
+class Concept:
+    concept_id: str
+    title: str
+    order: int
+    default_difficulty: str
+    learner_command: str | None
+    rubric_ids: list[str]
+    variants: list[LessonVariant]
+    branch_targets: dict[str, list[str]]
+```
+
+The selection decision shape remains:
+
+```python
 @dataclass
 class CurriculumSpec:
     curriculum_version: str
@@ -96,17 +116,13 @@ class CurriculumSpec:
 
 @dataclass
 class LessonSelectionDecision:
-    lesson_id: str
-    concept_id: str
-    difficulty: Difficulty
-    variant_id: str
+    concept: Concept
+    variant: LessonVariant
+    selection_rationale: str
     branch_id: str | None
-    next_action_reason: str
-    skipped_concepts: list[str]
-    prompt_inputs: dict[str, str]
 ```
 
-`LessonSelectionDecision` is an internal pre-assignment object. The MCP server maps it to the persisted `LessonAssignment`, which owns assignment status, timestamps, curriculum version, and learner id.
+`LessonSelectionDecision` is an internal pre-assignment object. The lesson service maps it to the persisted `LessonAssignment`, which owns assignment id, lesson id, concept id, difficulty, variant id, assignment status, timestamps, curriculum version, learner id, and selection rationale.
 
 ### 4.2 Example Curriculum Spec
 
@@ -211,23 +227,31 @@ LessonHandler = Callable[["LessonSelectionContext"], LessonSelectionDecision]
 
 
 def select_simplified_lesson(context: "LessonSelectionContext") -> LessonSelectionDecision:
-    return context.decision_factory.build_decision(
-        concept_id=context.last_assignment.concept_id,
-        difficulty=context.difficulty_scale.lower(context.last_assignment.difficulty),
+    concept = context.curriculum.concepts[context.last_assignment.concept_id]
+    variant = variant_for_difficulty(
+        concept=concept,
+        difficulty=lower_difficulty(context.last_assignment.difficulty),
+        prior_assignments=context.prior_assignments,
+    )
+    return LessonSelectionDecision(
+        concept=concept,
+        variant=variant,
+        selection_rationale=(
+            "Selected by simplify action after assessment: "
+            f"{context.last_assessment.next_action_reason}"
+        ),
     )
 
 
 class LessonSelector:
-    def __init__(self, handlers: dict[str, LessonHandler], placement_policy):
+    def __init__(self, handlers: dict[str, LessonHandler]):
         self.handlers = handlers
-        self.placement_policy = placement_policy
 
     def select_next_lesson(self, context: "LessonSelectionContext") -> LessonSelectionDecision:
-        if context.is_new_session:
-            return self.placement_policy.select(context)
-
-        decision = context.last_assessment.next_step_decision
-        return self.handlers[decision.action](context)
+        handler = self.handlers.get(context.last_assessment.next_action)
+        if handler is None:
+            return select_repeat_variant(context)
+        return handler(context)
 ```
 
 Required v1 handlers:
@@ -242,7 +266,7 @@ Required v1 handlers:
 
 The `LessonSelector` should be the only service that resolves `next_action` to behavior.
 
-`LessonSelectionContext.last_assessment.next_step_decision` must include `action`, `branch_id`, and `reason`. The assessment service persists these as assessment result fields, and the lesson service may expose them as a normalized `next_step_decision` object in selection context so branch targets can be resolved deterministically after assessment.
+`LessonSelectionContext.last_assessment` reads the persisted flat assessment fields: `next_action`, `branch_id`, and `next_action_reason`. The selector may adapt those fields into a local helper object if useful, but no persisted `next_step_decision` object exists in v1.
 
 ### 4.5 Starting Placement
 
@@ -256,16 +280,19 @@ The `LessonSelector` should be the only service that resolves `next_action` to b
 
 Placement skip behavior:
 
-- Concepts before the starting concept are marked `provisionally_skipped`.
-- Provisionally skipped concepts are not treated as completed.
-- Each provisional skip creates a `provisionally_skipped` progress event.
-- Confirming a skip creates a `skip_confirmed` progress event.
-- Later assessment evidence may confirm the skip or reopen the concept.
-- Reopening a skipped concept creates a `reopened` progress event.
+- Target behavior: concepts before the starting concept are marked `provisionally_skipped`.
+- Target behavior: provisionally skipped concepts are not treated as completed.
+- Target behavior: each provisional skip creates a `provisionally_skipped` progress event.
+- Target behavior: confirming a skip creates a `skip_confirmed` progress event.
+- Target behavior: later assessment evidence may confirm the skip or reopen the concept.
+- Target behavior: reopening a skipped concept creates a `reopened` progress event.
+- Current v1 behavior: `start_session` sets the active starting concept from placement and does not emit provisional skip events.
 
 ### 4.6 Next-Step Rule Set
 
-Next-step action selection must use ordered rules instead of a hardcoded conditional chain. The first matching rule wins. New action types or thresholds should be added by changing rule data or adding a rule object.
+Target next-step action selection should use ordered rules instead of a hardcoded conditional chain. The first matching rule wins. New action types or thresholds should be added by changing rule data or adding a rule object.
+
+Current v1 deterministic scoring uses explicit threshold logic and emits `repeat`, `simplify`, `continue`, or `accelerate`. It does not emit `branch`; branch resolution is implemented in lesson selection for stored branch assessments and future branch-capable scorers.
 
 Specific branch and remediation rules must run before broad low-score rules.
 
@@ -373,7 +400,7 @@ Default v1 completion rules:
 - A completed concept can be reopened if later evidence shows a required rubric dimension below `0.50` with confidence at least `0.60`.
 - Reopened concepts return through the normal selection handler registry.
 
-Completion emits a `completed` progress event. Reopening emits a `reopened` progress event.
+Target behavior: completion emits a `completed` progress event and reopening emits a `reopened` progress event. Current v1 writes an `assessed` event with `next_action` details, but it does not yet emit separate completed/repeated/simplified/accelerated/branched/reopened events during assessment.
 
 ### 4.8 Assignment History And Prompt Variants
 
@@ -395,25 +422,28 @@ Variant exhaustion behavior:
 - If all variants were used recently and the learner is struggling, lower difficulty before reusing a variant.
 - If reuse is unavoidable, allow reuse only with an explicit selection rationale.
 
-Variants are stored on `ConceptSpec.variants` in v1. A future implementation may move them to a separate lesson spec repository keyed by concept id and difficulty.
+Variants are stored on the implemented v1 `Concept.variants` field. A future implementation may move them to a separate lesson spec repository keyed by concept id and difficulty.
 
 ### 4.9 Curriculum Validation
 
 Curriculum validation runs at server startup.
 
-Required checks:
+Current v1 required checks:
 
 - All concept ids are unique.
+- All branch target ids exist.
+- All rubric ids are known.
+- Every variant id is unique within a concept and stable within a curriculum version.
+- Every variant references valid command metadata for non-allowlisted commands.
+
+Target richer graph checks:
+
 - All prerequisite ids exist.
 - All next concept ids exist.
-- All branch target ids exist.
-- Every `branch_id` returned by a v1 next-step rule is available on relevant concepts or has a configured global fallback.
-- All rubric ids exist.
+- Every `branch_id` returned by a branch-capable next-step rule is available on relevant concepts or has a configured global fallback.
 - The default path has no unintended cycles.
 - Every non-terminal concept has at least 1 reachable next concept or branch target.
 - Lesson ids and variant ids are stable within a curriculum version.
-- Every variant id is unique within a concept and stable within a curriculum version.
-- Every variant references valid command metadata for non-allowlisted commands.
 
 ## 5. LLD Diagram
 
@@ -449,7 +479,8 @@ Diagram description:
 4. Rust Sensei assesses the attempt.
 5. Rust Sensei updates concept scores and confidence.
 6. Rust Sensei picks one next-step action.
-7. The next prompt is easier, similar, normal, harder, or branched based on evidence.
+7. In current v1, the next prompt is easier, similar, normal, or harder based on evidence.
+8. Future branch-capable scoring may return a branched prompt based on high-confidence remediation or enrichment evidence.
 
 ## 7. Failure Scenarios
 
@@ -461,7 +492,7 @@ Diagram description:
 
 ### 7.2 Curriculum Graph Invalid
 
-- Trigger: No eligible concept exists because prerequisites or graph links are inconsistent.
+- Trigger: No eligible concept exists because target graph metadata such as prerequisites or graph links are inconsistent.
 - Expected behavior: Return a curriculum validation error.
 - Requirement link: `AL-FR-02`.
 
@@ -485,7 +516,7 @@ Diagram description:
 
 ### 7.6 Concept Spec Invalid
 
-- Trigger: Missing prerequisites, rubric ids, or next concept references.
+- Trigger: Missing required current fields, invalid rubric ids, duplicate variant ids, invalid command metadata, or invalid future graph metadata such as prerequisites and next concept references.
 - Expected behavior: Fail startup validation and report invalid concept ids.
 - Requirement link: `AL-FR-01`.
 
