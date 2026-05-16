@@ -77,7 +77,9 @@ The former local MCP SDK blocker has been resolved with a project virtual enviro
 
 ## Developer Setup
 
-Rust Sensei targets Python `3.11+`.
+Rust Sensei targets Python `3.11+`. The package metadata declares
+`python_requires = >=3.11`; do not use `/usr/bin/python3` on macOS if it is
+still Python `3.9.x`.
 
 On macOS with Homebrew Python, make sure your shell has loaded Homebrew before creating the virtual environment:
 
@@ -86,29 +88,32 @@ source ~/.zshrc
 python3 --version
 ```
 
-Create and activate a local virtual environment:
+Create a local virtual environment:
 
 ```bash
 python3 -m venv .venv
-source .venv/bin/activate
 ```
+
+Activating the virtual environment is optional. Automation and agents should use
+the explicit `.venv/bin/python` entry point so commands do not depend on shell
+activation or `PATH`.
 
 Install the project with developer dependencies:
 
 ```bash
-python -m pip install -e ".[dev]"
+.venv/bin/python -m pip install -e ".[dev]"
 ```
 
 Install the MCP server dependency when the package index can provide the official MCP SDK:
 
 ```bash
-python -m pip install -e ".[mcp]"
+.venv/bin/python -m pip install -e ".[mcp]"
 ```
 
 Use both extras when developing against the real SDK:
 
 ```bash
-python -m pip install -e ".[dev-mcp]"
+.venv/bin/python -m pip install -e ".[dev-mcp]"
 ```
 
 Use `.[dev-mcp]` for the full local verification path. It includes the unit-test dependencies and the official MCP SDK used by the focused FastMCP integration tests.
@@ -118,8 +123,8 @@ The MCP SDK package may be unavailable on some package indexes. With `.[dev]`, t
 Run local setup diagnostics:
 
 ```bash
-python -m rust_sensei doctor
-python -m rust_sensei doctor --json
+.venv/bin/python -m rust_sensei doctor
+.venv/bin/python -m rust_sensei doctor --json
 ```
 
 ## Unit Tests
@@ -167,9 +172,8 @@ Latest known verification:
 
 Recommended implementation order:
 
-1. Clean up packaging and setup docs around supported Python versions, virtualenv setup, and MCP extras.
-2. Add more real-SDK MCP integration tests if a stable in-process testing pattern is adopted.
-3. Continue hardening validation, privacy limits, JSON state recovery, and curriculum validation.
+1. Add more real-SDK MCP integration tests if a stable in-process testing pattern is adopted.
+2. Continue hardening validation, privacy limits, JSON state recovery, and curriculum validation.
 
 ## Documents
 

@@ -55,6 +55,8 @@ Primary requirement links:
 - `MS-NFR-07`: Direct JSON access must be limited to storage adapter modules.
 - `MS-NFR-08`: Request validation should use Pydantic or an equivalent runtime validation layer.
 - `MS-NFR-09`: JSON writes must use atomic replace plus a single-writer lock around read-modify-write operations.
+- `MS-NFR-10`: The base package should keep the official MCP SDK in optional extras so service/storage tests can run without importing the real SDK.
+- `MS-NFR-11`: Project automation should use `.venv/bin/python` entry points instead of assuming an activated virtual environment or shell `PATH`.
 
 ## 4. LLD Summary
 
