@@ -128,7 +128,7 @@ Prompts:
 
 ### 4.4 Tool Contracts
 
-Tool inputs and outputs should be implemented as Pydantic models. The server should not expose loose `dict` payloads except at the MCP SDK boundary.
+Tool inputs and outputs should be implemented as Pydantic models. FastMCP handlers should expose direct typed parameters for schema generation, then map those parameters into request DTOs before calling services.
 
 ```python
 from typing import Literal
@@ -809,7 +809,7 @@ register_handlers(mcp, services)
 mcp.run()
 ```
 
-Handler registration is separated from `run` so tests can verify the registered MCP tools, resources, prompts, validation behavior, and error envelopes without importing the real SDK.
+Handler registration is separated from `run` so tests can verify the registered MCP tools, resources, prompts, validation behavior, and error envelopes without importing the real SDK. Tools should expose direct typed FastMCP parameters and then map those arguments into the existing Pydantic request DTOs; do not wrap every tool in a single opaque `payload` argument.
 
 ```python
 session_service = services.session_service()
@@ -820,58 +820,106 @@ setup_service = services.setup_service()
 
 
 @mcp.tool()
-def start_session(payload: dict) -> dict:
+def start_session(
+    learner_id: str = "local-default",
+    initial_rust_level: str | None = None,
+) -> dict:
     """Create or resume the active Rust Sensei learner session."""
-    request = StartSessionRequest.model_validate(payload)
+    request = StartSessionRequest.model_validate(
+        {
+            "learner_id": learner_id,
+            "initial_rust_level": initial_rust_level,
+        }
+    )
     return session_service.start_session(request).model_dump()
 
 
 @mcp.tool()
-def get_next_lesson(payload: dict) -> dict:
+def get_next_lesson(
+    learner_id: str = "local-default",
+    force_new_variant: bool = False,
+    abandon_active_assignment: bool = False,
+    abandonment_reason: str | None = None,
+) -> dict:
     """Return the next adaptive Rust lesson for the learner."""
-    request = GetNextLessonRequest.model_validate(payload)
+    request = GetNextLessonRequest.model_validate(
+        {
+            "learner_id": learner_id,
+            "force_new_variant": force_new_variant,
+            "abandon_active_assignment": abandon_active_assignment,
+            "abandonment_reason": abandonment_reason,
+        }
+    )
     return lesson_service.get_next_lesson(request).model_dump()
 
 
 @mcp.tool()
-def submit_attempt(payload: dict) -> dict:
+def submit_attempt(
+    assignment_id: str,
+    learner_id: str = "local-default",
+    code: str | None = None,
+    compiler_output: str | None = None,
+    runtime_output: str | None = None,
+    test_output: str | None = None,
+) -> dict:
     """Persist a learner attempt for later assessment."""
-    request = SubmitAttemptRequest.model_validate(payload)
+    request = SubmitAttemptRequest.model_validate(
+        {
+            "learner_id": learner_id,
+            "assignment_id": assignment_id,
+            "code": code,
+            "compiler_output": compiler_output,
+            "runtime_output": runtime_output,
+            "test_output": test_output,
+        }
+    )
     return assessment_service.submit_attempt(request).model_dump()
 
 
 @mcp.tool()
-def assess_attempt(payload: dict) -> dict:
+def assess_attempt(attempt_id: str) -> dict:
     """Assess an attempt and update learner state."""
-    request = AssessAttemptRequest.model_validate(payload)
+    request = AssessAttemptRequest.model_validate({"attempt_id": attempt_id})
     return assessment_service.assess_attempt(request).model_dump()
 
 
 @mcp.tool()
-def get_learner_profile(payload: dict) -> dict:
+def get_learner_profile(learner_id: str = "local-default") -> dict:
     """Return the active learner profile and skill model."""
-    request = GetLearnerProfileRequest.model_validate(payload)
+    request = GetLearnerProfileRequest.model_validate({"learner_id": learner_id})
     return session_service.get_learner_profile(request).model_dump()
 
 
 @mcp.tool()
-def get_progress_summary(payload: dict) -> dict:
+def get_progress_summary(learner_id: str = "local-default") -> dict:
     """Return the learner's progress summary."""
-    request = GetProgressSummaryRequest.model_validate(payload)
+    request = GetProgressSummaryRequest.model_validate({"learner_id": learner_id})
     return progress_service.get_progress_summary(request).model_dump()
 
 
 @mcp.tool()
-def update_learner_signal(payload: dict) -> dict:
+def update_learner_signal(
+    signal_type: str,
+    value: str | float | bool,
+    learner_id: str = "local-default",
+    notes: str | None = None,
+) -> dict:
     """Record a non-code learner signal."""
-    request = UpdateLearnerSignalRequest.model_validate(payload)
+    request = UpdateLearnerSignalRequest.model_validate(
+        {
+            "learner_id": learner_id,
+            "signal_type": signal_type,
+            "value": value,
+            "notes": notes,
+        }
+    )
     return session_service.update_learner_signal(request).model_dump()
 
 
 @mcp.tool()
-def get_setup_status(payload: dict) -> dict:
+def get_setup_status(learner_id: str = "local-default") -> dict:
     """Return local setup diagnostics."""
-    request = GetSetupStatusRequest.model_validate(payload)
+    request = GetSetupStatusRequest.model_validate({"learner_id": learner_id})
     return setup_service.get_setup_status(request).model_dump()
 
 

@@ -60,11 +60,20 @@ Implemented MCP prompts in code:
 
 Known limitations:
 
-- MCP handler registration is unit-tested with a fake registrar. The MCP boundary is not integration-tested against the real SDK because the `mcp` package is not available from the current local package index.
-- MCP tools currently use a `payload` wrapper pending SDK schema verification. This should be resolved before treating the MCP contract as stable.
+- MCP handler registration is unit-tested with a fake registrar and covered by focused FastMCP integration tests when the `mcp` extra is installed.
+- MCP tools expose direct typed parameters in the registered FastMCP handlers instead of an opaque `payload` wrapper. Project DTO validation still owns validation error envelopes.
 - `force_new_variant` is supported only with `abandon_active_assignment` while an active assignment exists.
 - `assess_attempt` uses deterministic scoring only. It does not call an LLM.
 - v1 still supports only `local-default` as the learner id.
+
+## Current MCP Verification
+
+The former local MCP SDK blocker has been resolved with a project virtual environment.
+
+- Homebrew Python `3.14.5` is available through a sourced shell.
+- A local `.venv` was created with `python3 -m venv .venv`.
+- `mcp==1.27.1` installs successfully with `.venv/bin/python -m pip install -e ".[dev-mcp]"`.
+- Real `FastMCP` registration was verified for tools, resources, prompts, direct-parameter tool schemas, and runtime `call_tool` execution for `start_session` and `get_next_lesson`.
 
 ## Developer Setup
 
@@ -88,7 +97,7 @@ Use both extras when developing against the real SDK:
 python -m pip install -e ".[dev-mcp]"
 ```
 
-The MCP SDK package may be unavailable on some package indexes. The current unit tests cover the implemented service, storage, logging, CLI, DTO, and MCP handler registration layers without starting the MCP server.
+The MCP SDK package may be unavailable on some package indexes. With `.[dev]`, tests cover the implemented service, storage, logging, CLI, DTO, and fake-registrar MCP handler layers. With `.[dev-mcp]`, the suite also runs focused FastMCP integration tests for registration, schemas, runtime tool calls, and structured validation errors.
 
 Run local setup diagnostics:
 
@@ -130,17 +139,17 @@ Open `htmlcov/index.html` in a browser to inspect file-by-file coverage. The `ht
 
 Latest known verification:
 
-- `130` tests passed.
-- Coverage passed at `93.30%`.
-- Tests ran under local Python `3.9.6` with compatibility dependencies, while project metadata targets Python `3.11+`. Treat the `3.9.6` run as incidental compatibility coverage, not the supported runtime.
+- `131` tests passed under Python `3.14.5` in `.venv`.
+- Real FastMCP registration and runtime calls passed with `mcp==1.27.1`.
+- Prior coverage passed at `93.30%`.
 
 ## Next Work
 
 Recommended implementation order:
 
-1. Verify the registered MCP surface against the official SDK and resolve the `payload` wrapper decision.
-2. Verify the full test suite under supported Python `3.11+` and clean up setup docs around unsupported Python versions.
-3. Clean up packaging and setup docs.
+1. Clean up packaging and setup docs around supported Python versions, virtualenv setup, and MCP extras.
+2. Add more real-SDK MCP integration tests if a stable in-process testing pattern is adopted.
+3. Continue hardening validation, privacy limits, JSON state recovery, and curriculum validation.
 
 ## Documents
 
