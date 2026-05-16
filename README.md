@@ -79,6 +79,20 @@ The former local MCP SDK blocker has been resolved with a project virtual enviro
 
 Rust Sensei targets Python `3.11+`.
 
+On macOS with Homebrew Python, make sure your shell has loaded Homebrew before creating the virtual environment:
+
+```bash
+source ~/.zshrc
+python3 --version
+```
+
+Create and activate a local virtual environment:
+
+```bash
+python3 -m venv .venv
+source .venv/bin/activate
+```
+
 Install the project with developer dependencies:
 
 ```bash
@@ -97,6 +111,8 @@ Use both extras when developing against the real SDK:
 python -m pip install -e ".[dev-mcp]"
 ```
 
+Use `.[dev-mcp]` for the full local verification path. It includes the unit-test dependencies and the official MCP SDK used by the focused FastMCP integration tests.
+
 The MCP SDK package may be unavailable on some package indexes. With `.[dev]`, tests cover the implemented service, storage, logging, CLI, DTO, and fake-registrar MCP handler layers. With `.[dev-mcp]`, the suite also runs focused FastMCP integration tests for registration, schemas, runtime tool calls, and structured validation errors.
 
 Run local setup diagnostics:
@@ -108,7 +124,7 @@ python -m rust_sensei doctor --json
 
 ## Unit Tests
 
-Run the unit test suite:
+Run the unit test suite from the activated virtual environment:
 
 ```bash
 python -m pytest
@@ -136,6 +152,8 @@ python -m pytest --cov=rust_sensei --cov-report=html
 ```
 
 Open `htmlcov/index.html` in a browser to inspect file-by-file coverage. The `htmlcov/` directory is ignored by git.
+
+If `python3 --version` still shows the system Python `3.9.6`, run `source ~/.zshrc` or open a new shell before recreating `.venv`. The supported development runtime should come from Homebrew Python or another Python `3.11+` install, not `/usr/bin/python3`.
 
 Latest known verification:
 
