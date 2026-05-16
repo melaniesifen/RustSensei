@@ -253,7 +253,7 @@ def _score_rust_correctness(attempt: AttemptSubmission) -> tuple[float, list[str
         return FAILURE_SIGNAL_SCORE, ["Compiler or test output indicates a failure."]
     if _has_success_signal(attempt):
         return SUCCESS_SIGNAL_SCORE, ["Submitted execution evidence indicates success."]
-    if attempt.code:
+    if _has_text(attempt.code):
         return CODE_WITHOUT_EXECUTION_SCORE, [
             "Code was submitted without clear execution success evidence."
         ]
@@ -263,14 +263,14 @@ def _score_rust_correctness(attempt: AttemptSubmission) -> tuple[float, list[str
 def _score_compiler_error_handling(
     attempt: AttemptSubmission,
 ) -> tuple[float, list[str]]:
-    if not attempt.compiler_output:
+    if not _has_text(attempt.compiler_output):
         if _has_success_signal(attempt):
             return CODE_WITHOUT_EXECUTION_SCORE, [
                 "Command metadata or test output indicates execution completed."
             ]
         return MISSING_COMPILER_OUTPUT_SCORE, ["Compiler output was not submitted."]
     if _text_has_failure(attempt.compiler_output):
-        if attempt.learner_notes:
+        if _has_text(attempt.learner_notes):
             return FAILURE_WITH_LEARNER_NOTES_SCORE, [
                 "Compiler output shows errors and learner notes add context."
             ]
@@ -284,7 +284,7 @@ def _score_code_quality(
     attempt: AttemptSubmission,
     rubric_id: str,
 ) -> tuple[float, list[str]]:
-    if not attempt.code:
+    if not _has_text(attempt.code):
         return NO_CODE_SCORE, ["No code was submitted for code-quality review."]
     stripped = attempt.code.strip()
     if len(stripped) < 20:
@@ -310,15 +310,15 @@ def _score_problem_solving(
     attempt: AttemptSubmission,
     rubric_id: str,
 ) -> tuple[float, list[str]]:
-    if not attempt.code:
+    if not _has_text(attempt.code):
         return FAILURE_SIGNAL_SCORE, ["No code was submitted for solution review."]
 
     score = BASE_PROBLEM_SOLVING_SCORE
     evidence = ["Code was submitted for solution review."]
-    if attempt.learner_notes:
+    if _has_text(attempt.learner_notes):
         score += LEARNER_NOTES_BONUS
         evidence.append("Learner notes explain the approach.")
-    if attempt.test_output and not _text_has_failure(attempt.test_output):
+    if _has_text(attempt.test_output) and not _text_has_failure(attempt.test_output):
         score += TEST_OUTPUT_BONUS
         evidence.append("Test output supports the submitted solution.")
     if rubric_id == "dsa" and any(
@@ -359,12 +359,12 @@ def _confidence_breakdown(
 
 
 def _critical_evidence_cap(attempt: AttemptSubmission) -> float | None:
-    has_code = bool(attempt.code)
+    has_code = _has_text(attempt.code)
     has_primary_execution_artifact = any(
         [
-            attempt.compiler_output,
-            attempt.runtime_output,
-            attempt.test_output,
+            _has_text(attempt.compiler_output),
+            _has_text(attempt.runtime_output),
+            _has_text(attempt.test_output),
             _has_primary_command_metadata(attempt),
         ]
     )
@@ -378,10 +378,14 @@ def _critical_evidence_cap(attempt: AttemptSubmission) -> float | None:
 
 def _evidence_completeness(attempt: AttemptSubmission) -> float:
     score = 0.0
-    score += 0.35 if attempt.code else 0.0
-    score += 0.25 if attempt.compiler_output else 0.0
-    score += 0.15 if attempt.runtime_output or attempt.test_output else 0.0
-    score += 0.10 if attempt.learner_notes else 0.0
+    score += 0.35 if _has_text(attempt.code) else 0.0
+    score += 0.25 if _has_text(attempt.compiler_output) else 0.0
+    score += (
+        0.15
+        if _has_text(attempt.runtime_output) or _has_text(attempt.test_output)
+        else 0.0
+    )
+    score += 0.10 if _has_text(attempt.learner_notes) else 0.0
     score += 0.10 if attempt.command_run_metadata else 0.0
     score += 0.05 if attempt.assignment_id else 0.0
     return round(min(score, 1.0), 2)
@@ -389,17 +393,17 @@ def _evidence_completeness(attempt: AttemptSubmission) -> float:
 
 def _evidence_quality(attempt: AttemptSubmission) -> float:
     quality = 1.0
-    if attempt.code and len(attempt.code.strip()) < 20:
+    if _has_text(attempt.code) and len(attempt.code.strip()) < 20:
         quality -= 0.25
     if attempt.output_truncated and not attempt.truncation_reason:
         quality -= 0.15
-    if attempt.compiler_output and not _output_relevant_to_lesson(
+    if _has_text(attempt.compiler_output) and not _output_relevant_to_lesson(
         attempt.compiler_output
     ):
         quality -= 0.20
     if _evidence_contradicts_agent_notes(attempt):
         quality -= 0.20
-    if attempt.learner_notes and len(attempt.learner_notes.strip()) >= 40:
+    if _has_text(attempt.learner_notes) and len(attempt.learner_notes.strip()) >= 40:
         quality += 0.05
     if attempt.command_run_metadata:
         quality += 0.05
@@ -410,7 +414,7 @@ def _rubric_confidence(attempt: AttemptSubmission, rubric_id: str) -> float:
     weights = RUBRIC_EVIDENCE_WEIGHTS[rubric_id]
     score = 0.0
     for field_name, weight in weights.items():
-        if getattr(attempt, field_name, None):
+        if _has_evidence_field(getattr(attempt, field_name, None)):
             score += weight
     capped = _apply_rubric_evidence_cap(attempt, rubric_id, score)
     return round(min(capped * _evidence_quality(attempt), 1.0), 2)
@@ -421,9 +425,12 @@ def _apply_rubric_evidence_cap(
     rubric_id: str,
     confidence: float,
 ) -> float:
-    if rubric_id in CODE_DEPENDENT_RUBRICS and not attempt.code:
+    if rubric_id in CODE_DEPENDENT_RUBRICS and not _has_text(attempt.code):
         return min(confidence, 0.35)
-    if rubric_id == "compiler_error_handling" and not attempt.compiler_output:
+    if (
+        rubric_id == "compiler_error_handling"
+        and not _has_text(attempt.compiler_output)
+    ):
         return min(confidence, 0.50)
     return confidence
 
@@ -561,18 +568,18 @@ def _feedback_summary(assessment_status: str, confidence: float) -> str:
 
 def _missing_evidence(attempt: AttemptSubmission) -> list[str]:
     missing = []
-    if not attempt.code:
+    if not _has_text(attempt.code):
         missing.append("code")
     if not any(
         [
-            attempt.compiler_output,
-            attempt.runtime_output,
-            attempt.test_output,
+            _has_text(attempt.compiler_output),
+            _has_text(attempt.runtime_output),
+            _has_text(attempt.test_output),
             _has_primary_command_metadata(attempt),
         ]
     ):
         missing.append("execution_output")
-    if not attempt.learner_notes:
+    if not _has_text(attempt.learner_notes):
         missing.append("learner_notes")
     return missing
 
@@ -680,13 +687,23 @@ def _has_primary_command_metadata(attempt: AttemptSubmission) -> bool:
 def _metadata_is_primary(item: Any) -> bool:
     return all(
         [
-            item.command,
-            item.source,
+            _has_text(item.command),
+            item.source in {"learner", "agent"},
             item.exit_code is not None,
             item.started_at,
-            item.output_summary,
+            _has_text(item.output_summary),
         ]
     )
+
+
+def _has_text(value: str | None) -> bool:
+    return bool(value and value.strip())
+
+
+def _has_evidence_field(value: Any) -> bool:
+    if isinstance(value, str):
+        return _has_text(value)
+    return bool(value)
 
 
 def _clamp(value: float) -> float:

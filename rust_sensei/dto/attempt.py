@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from datetime import datetime
+from typing import Literal
 
 from pydantic import Field
 
@@ -10,7 +11,7 @@ from rust_sensei.dto.common import StrictDTO
 
 class CommandRunMetadataDTO(StrictDTO):
     command: str
-    source: str
+    source: Literal["learner", "agent"]
     cwd: str | None = None
     exit_code: int | None
     started_at: datetime
@@ -22,7 +23,7 @@ class CommandRunMetadataDTO(StrictDTO):
     stdout_truncated: bool = False
     stderr_truncated: bool = False
     purpose: str | None = None
-    risk_level: str | None = None
+    risk_level: Literal["low", "medium", "high"] | None = None
 
 
 class SubmitAttemptRequest(StrictDTO):

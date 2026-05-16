@@ -36,6 +36,7 @@ from rust_sensei.repositories.interfaces import (
 )
 
 LOGGER = logging.getLogger(__name__)
+COMMAND_METADATA_SOURCES = {"learner", "agent"}
 
 
 class AssessmentService:
@@ -344,10 +345,10 @@ def _attempt_from_request(
 def _has_assessable_artifact(request: SubmitAttemptRequest) -> bool:
     return any(
         [
-            bool(request.code),
-            bool(request.compiler_output),
-            bool(request.runtime_output),
-            bool(request.test_output),
+            _has_text(request.code),
+            _has_text(request.compiler_output),
+            _has_text(request.runtime_output),
+            _has_text(request.test_output),
             any(
                 _is_complete_command_metadata(item)
                 for item in request.command_run_metadata
@@ -359,11 +360,11 @@ def _has_assessable_artifact(request: SubmitAttemptRequest) -> bool:
 def _is_complete_command_metadata(item: Any) -> bool:
     return all(
         [
-            item.command,
-            item.source,
+            _has_text(item.command),
+            item.source in COMMAND_METADATA_SOURCES,
             item.exit_code is not None,
             item.started_at,
-            item.output_summary,
+            _has_text(item.output_summary),
         ]
     )
 
@@ -371,13 +372,17 @@ def _is_complete_command_metadata(item: Any) -> bool:
 def _attempt_has_assessable_artifact(attempt: AttemptSubmission) -> bool:
     return any(
         [
-            bool(attempt.code),
-            bool(attempt.compiler_output),
-            bool(attempt.runtime_output),
-            bool(attempt.test_output),
+            _has_text(attempt.code),
+            _has_text(attempt.compiler_output),
+            _has_text(attempt.runtime_output),
+            _has_text(attempt.test_output),
             any(
                 _is_complete_command_metadata(item)
                 for item in attempt.command_run_metadata
             ),
         ]
     )
+
+
+def _has_text(value: str | None) -> bool:
+    return bool(value and value.strip())

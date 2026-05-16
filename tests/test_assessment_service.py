@@ -7,7 +7,7 @@ import pytest
 from pydantic import ValidationError as PydanticValidationError
 
 from rust_sensei.domain.assessment import AssessmentResult
-from rust_sensei.domain.attempt import AttemptSubmission
+from rust_sensei.domain.attempt import AttemptSubmission, CommandRunMetadata
 from rust_sensei.domain.curriculum import Concept, Curriculum, LessonVariant
 from rust_sensei.domain.enums import AssignmentStatus, NextAction, RustLevel
 from rust_sensei.domain.learner import LearnerProfile
@@ -155,6 +155,26 @@ def test_submit_attempt_requires_assessable_artifact(tmp_path):
         assessment_service.submit_attempt(SubmitAttemptRequest(assignment_id=assignment_id))
 
 
+@pytest.mark.parametrize(
+    "field_name",
+    ["code", "compiler_output", "runtime_output", "test_output"],
+)
+def test_submit_attempt_rejects_whitespace_only_text_artifacts(
+    tmp_path,
+    field_name,
+):
+    _, lesson_service, assessment_service, _ = _services(tmp_path)
+    assignment_id = _create_assignment(lesson_service)
+
+    with pytest.raises(ValidationError):
+        assessment_service.submit_attempt(
+            SubmitAttemptRequest(
+                assignment_id=assignment_id,
+                **{field_name: "   \n\t  "},
+            )
+        )
+
+
 def test_submit_attempt_accepts_complete_command_metadata_without_code(tmp_path):
     _, lesson_service, assessment_service, _ = _services(tmp_path)
     assignment_id = _create_assignment(lesson_service)
@@ -175,6 +195,29 @@ def test_submit_attempt_accepts_complete_command_metadata_without_code(tmp_path)
     )
 
     assert response.attempt_id == "attempt_000001"
+
+
+def test_command_metadata_rejects_invalid_source():
+    with pytest.raises(PydanticValidationError):
+        CommandRunMetadataDTO(
+            command="cargo check",
+            source="unknown",
+            exit_code=0,
+            started_at="2026-05-10T00:00:00Z",
+            output_summary="cargo check completed",
+        )
+
+
+def test_command_metadata_rejects_invalid_risk_level():
+    with pytest.raises(PydanticValidationError):
+        CommandRunMetadataDTO(
+            command="cargo check",
+            source="agent",
+            exit_code=0,
+            started_at="2026-05-10T00:00:00Z",
+            output_summary="cargo check completed",
+            risk_level="severe",
+        )
 
 
 def test_submit_attempt_rejects_missing_assignment(tmp_path):
@@ -542,6 +585,71 @@ def test_assess_attempt_rejects_attempt_without_assessable_artifact(tmp_path):
 
     with pytest.raises(ValidationError):
         assessment_service.assess_attempt(
+            AssessAttemptRequest(attempt_id=saved_attempt.attempt_id)
+        )
+
+
+def test_assess_attempt_rejects_legacy_whitespace_only_artifact(tmp_path):
+    repositories = JsonRepositoryFactory(tmp_path)
+    _save_profile(repositories)
+    assignment = _manual_assignment(status=AssignmentStatus.ATTEMPTED)
+    repositories.assignment_repository().save_assignment(assignment)
+    attempt = AttemptSubmission(
+        attempt_id="",
+        learner_id=TEST_LEARNER_ID,
+        assignment_id=assignment.assignment_id,
+        lesson_id=assignment.lesson_id,
+        client_request_id=None,
+        client_request_fingerprint=None,
+        workspace_root=None,
+        code="   \n\t  ",
+        compiler_output="  ",
+        submitted_at=_fixed_now(),
+    )
+    saved_attempt, _ = repositories.attempt_repository().save_attempt_for_assignment(
+        attempt,
+        assignment,
+    )
+
+    with pytest.raises(ValidationError):
+        _assessment_service(repositories).assess_attempt(
+            AssessAttemptRequest(attempt_id=saved_attempt.attempt_id)
+        )
+
+
+def test_assess_attempt_rejects_legacy_invalid_command_metadata_source(tmp_path):
+    repositories = JsonRepositoryFactory(tmp_path)
+    _save_profile(repositories)
+    assignment = _manual_assignment(status=AssignmentStatus.ATTEMPTED)
+    repositories.assignment_repository().save_assignment(assignment)
+    attempt = AttemptSubmission(
+        attempt_id="",
+        learner_id=TEST_LEARNER_ID,
+        assignment_id=assignment.assignment_id,
+        lesson_id=assignment.lesson_id,
+        client_request_id=None,
+        client_request_fingerprint=None,
+        workspace_root=None,
+        code=None,
+        command_run_metadata=[
+            CommandRunMetadata(
+                command="cargo check",
+                source="unknown",
+                cwd=None,
+                exit_code=0,
+                started_at=TEST_NOW,
+                output_summary="cargo check completed",
+            )
+        ],
+        submitted_at=_fixed_now(),
+    )
+    saved_attempt, _ = repositories.attempt_repository().save_attempt_for_assignment(
+        attempt,
+        assignment,
+    )
+
+    with pytest.raises(ValidationError):
+        _assessment_service(repositories).assess_attempt(
             AssessAttemptRequest(attempt_id=saved_attempt.attempt_id)
         )
 

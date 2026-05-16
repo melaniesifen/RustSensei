@@ -25,7 +25,7 @@ This repository contains design documentation and a local Python implementation 
 - Session service for initial placement, active profile retrieval, and learner signal recording.
 - Lesson service for first assignment selection, active assignment reuse, active-assignment abandonment, pending-assessment detection, and post-assessment adaptive selection.
 - Adaptive lesson selection handlers live in `rust_sensei/domain/lesson_selection.py`, including branch target resolution and deterministic prompt variant rotation.
-- Assessment service implements `submit_attempt` and an initial `assess_attempt` flow with persisted idempotent assessment records.
+- Assessment service implements `submit_attempt` and an initial `assess_attempt` flow with persisted idempotent assessment records, nonblank evidence validation, and strict command metadata source/risk validation.
 - Deterministic rubric scoring and confidence measuring live in `rust_sensei/domain/scoring.py`.
 - Skill model updates with confidence dampening live in `rust_sensei/domain/skill_update.py`.
 - Append-only progress events are stored for assignment creation/viewing, attempt submission, assessment, and assignment abandonment. Lifecycle events for creation, attempt submission, assessment, and abandonment are written in the same JSON transaction as the canonical state change.
@@ -157,7 +157,7 @@ If `python3 --version` still shows the system Python `3.9.6`, run `source ~/.zsh
 
 Latest known verification:
 
-- `131` tests passed under Python `3.14.5` in `.venv`.
+- `141` tests passed under Python `3.14.5` in `.venv`.
 - Real FastMCP registration and runtime calls passed with `mcp==1.27.1`.
 - Prior coverage passed at `93.30%`.
 
