@@ -25,7 +25,7 @@ from rust_sensei.dto.session import (
     UpdateLearnerSignalRequest,
 )
 from rust_sensei.dto.setup import GetSetupStatusRequest
-from rust_sensei.errors import RustSenseiError
+from rust_sensei.errors import RustSenseiError, boundary_error_payload
 from rust_sensei.factory import ServiceFactory
 from rust_sensei.logging_config import log_boundary_exception
 from rust_sensei.prompts.tutor_prompts import (
@@ -185,7 +185,7 @@ def register_handlers(mcp: MCPRegistrar, services: ServiceFactory) -> None:
             return session_service.get_active_profile().model_dump(mode="json")
         except RustSenseiError as exc:
             log_boundary_exception(LOGGER, exc)
-            return _error_payload(exc)
+            return boundary_error_payload(exc)
 
     @mcp.resource(MCP_PROGRESS_SUMMARY_RESOURCE_URI)
     def progress_summary() -> dict[str, Any]:
@@ -193,7 +193,7 @@ def register_handlers(mcp: MCPRegistrar, services: ServiceFactory) -> None:
             return progress_service.get_active_progress_summary().model_dump(mode="json")
         except RustSenseiError as exc:
             log_boundary_exception(LOGGER, exc)
-            return _error_payload(exc)
+            return boundary_error_payload(exc)
 
     @mcp.resource(MCP_CURRICULUM_CONCEPTS_RESOURCE_URI)
     def curriculum_concepts() -> dict[str, Any]:
@@ -201,7 +201,7 @@ def register_handlers(mcp: MCPRegistrar, services: ServiceFactory) -> None:
             return lesson_service.list_curriculum_concepts().model_dump(mode="json")
         except RustSenseiError as exc:
             log_boundary_exception(LOGGER, exc)
-            return _error_payload(exc)
+            return boundary_error_payload(exc)
 
     @mcp.prompt()
     def rust_sensei_tutor() -> str:
@@ -226,7 +226,7 @@ def _execute_tool(
         return handler(request).model_dump(mode="json")
     except (RustSenseiError, PydanticValidationError) as exc:
         log_boundary_exception(LOGGER, exc)
-        return _error_payload(exc)
+        return boundary_error_payload(exc)
 
 
 def _payload_from_arguments(
@@ -237,18 +237,4 @@ def _payload_from_arguments(
         key: value
         for key, value in arguments.items()
         if key in request_model.model_fields and value is not None
-    }
-
-
-def _error_payload(exc: Exception) -> dict[str, Any]:
-    if isinstance(exc, RustSenseiError):
-        return {"error": exc.envelope.to_dict()}
-
-    return {
-        "error": {
-            "error_code": "validation_error",
-            "message": str(exc),
-            "details": {},
-            "retryable": False,
-        }
     }

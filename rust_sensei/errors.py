@@ -85,3 +85,17 @@ def idempotency_conflict_error(
             retryable=False,
         )
     )
+
+
+def boundary_error_payload(exc: Exception) -> dict[str, Any]:
+    if isinstance(exc, RustSenseiError):
+        return {"error": exc.envelope.to_dict()}
+
+    return {
+        "error": {
+            "error_code": "validation_error",
+            "message": str(exc),
+            "details": {},
+            "retryable": False,
+        }
+    }

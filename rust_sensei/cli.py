@@ -4,12 +4,11 @@ import argparse
 import json
 import logging
 from pathlib import Path
-from typing import Any
 
 from pydantic import ValidationError as PydanticValidationError
 
 from rust_sensei.dto.setup import GetSetupStatusRequest
-from rust_sensei.errors import RustSenseiError
+from rust_sensei.errors import RustSenseiError, boundary_error_payload
 from rust_sensei.factory import ServiceFactory
 from rust_sensei.logging_config import log_boundary_exception
 
@@ -67,7 +66,7 @@ def _print_setup_status(state_dir: Path | None) -> int:
         )
     except (RustSenseiError, PydanticValidationError) as exc:
         log_boundary_exception(LOGGER, exc)
-        print(json.dumps(_error_payload(exc), indent=2, sort_keys=True))
+        print(json.dumps(boundary_error_payload(exc), indent=2, sort_keys=True))
         return 1
 
     print(json.dumps(response.model_dump(mode="json"), indent=2, sort_keys=True))
@@ -81,7 +80,7 @@ def _print_doctor(state_dir: Path | None, json_output: bool = False) -> int:
         )
     except (RustSenseiError, PydanticValidationError) as exc:
         log_boundary_exception(LOGGER, exc)
-        payload = _error_payload(exc)
+        payload = boundary_error_payload(exc)
         if json_output:
             print(json.dumps(payload, indent=2, sort_keys=True))
         else:
@@ -100,17 +99,3 @@ def _print_doctor(state_dir: Path | None, json_output: bool = False) -> int:
             print(f"[{check.status.value}] {check.check_id}: {check.message}")
 
     return 0 if response.ready else 1
-
-
-def _error_payload(exc: Exception) -> dict[str, Any]:
-    if isinstance(exc, RustSenseiError):
-        return {"error": exc.envelope.to_dict()}
-
-    return {
-        "error": {
-            "error_code": "validation_error",
-            "message": str(exc),
-            "details": {},
-            "retryable": False,
-        }
-    }
