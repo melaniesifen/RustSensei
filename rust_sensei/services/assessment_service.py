@@ -37,6 +37,32 @@ from rust_sensei.repositories.interfaces import (
 
 LOGGER = logging.getLogger(__name__)
 COMMAND_METADATA_SOURCES = {"learner", "agent"}
+MAX_CODE_CHARS = 50_000
+MAX_OUTPUT_CHARS = 30_000
+MAX_NOTES_CHARS = 10_000
+MAX_PATH_CHARS = 500
+MAX_FILE_PATHS = 20
+MAX_OMITTED_FILES = 50
+MAX_COMMAND_METADATA_ITEMS = 20
+MAX_COMMAND_CHARS = 500
+MAX_COMMAND_PURPOSE_CHARS = 500
+MAX_COMMAND_OUTPUT_SUMMARY_CHARS = 5_000
+SENSITIVE_FILE_NAMES = {
+    ".env",
+    ".env.local",
+    ".envrc",
+    "id_rsa",
+    "id_dsa",
+    "id_ecdsa",
+    "id_ed25519",
+    "known_hosts",
+}
+SENSITIVE_FILE_SUFFIXES = (
+    ".pem",
+    ".key",
+    ".p12",
+    ".pfx",
+)
 
 
 class AssessmentService:
@@ -288,6 +314,15 @@ class AssessmentService:
                     "command_run_metadata",
                 ],
             )
+        _validate_artifact_limits(request)
+        _validate_file_paths(request.file_paths, "file_paths", MAX_FILE_PATHS)
+        _validate_file_paths(request.omitted_files, "omitted_files", MAX_OMITTED_FILES)
+        _validate_command_metadata_limits(request.command_run_metadata)
+        if request.output_truncated and not _has_text(request.truncation_reason):
+            raise validation_error(
+                "truncation_reason is required when output_truncated is true",
+                field="truncation_reason",
+            )
 
     @staticmethod
     def _validate_attempt_for_assessment(attempt: AttemptSubmission) -> None:
@@ -386,3 +421,95 @@ def _attempt_has_assessable_artifact(attempt: AttemptSubmission) -> bool:
 
 def _has_text(value: str | None) -> bool:
     return bool(value and value.strip())
+
+
+def _validate_artifact_limits(request: SubmitAttemptRequest) -> None:
+    _validate_text_size(request.code, "code", MAX_CODE_CHARS)
+    for field_name in ["compiler_output", "runtime_output", "test_output"]:
+        _validate_text_size(
+            getattr(request, field_name),
+            field_name,
+            MAX_OUTPUT_CHARS,
+        )
+    for field_name in [
+        "learner_notes",
+        "agent_notes",
+        "learner_execution_notes",
+        "truncation_reason",
+    ]:
+        _validate_text_size(
+            getattr(request, field_name),
+            field_name,
+            MAX_NOTES_CHARS,
+        )
+    _validate_text_size(request.workspace_root, "workspace_root", MAX_PATH_CHARS)
+
+
+def _validate_text_size(value: str | None, field_name: str, max_chars: int) -> None:
+    if value is not None and len(value) > max_chars:
+        raise validation_error(
+            f"{field_name} exceeds maximum length",
+            field=field_name,
+            max_chars=max_chars,
+        )
+
+
+def _validate_file_paths(
+    paths: list[str],
+    field_name: str,
+    max_count: int,
+) -> None:
+    if len(paths) > max_count:
+        raise validation_error(
+            f"{field_name} contains too many paths",
+            field=field_name,
+            max_count=max_count,
+        )
+
+    for path in paths:
+        _validate_text_size(path, field_name, MAX_PATH_CHARS)
+        if _is_sensitive_path(path):
+            raise validation_error(
+                "attempt evidence must not include secret-bearing file paths",
+                field=field_name,
+                path=path,
+            )
+
+
+def _is_sensitive_path(path: str) -> bool:
+    parts = [part.lower() for part in path.replace("\\", "/").split("/") if part]
+    if any(part in SENSITIVE_FILE_NAMES for part in parts):
+        return True
+    if not parts:
+        return False
+    return parts[-1].endswith(SENSITIVE_FILE_SUFFIXES)
+
+
+def _validate_command_metadata_limits(
+    metadata_items: list[CommandRunMetadataDTO],
+) -> None:
+    if len(metadata_items) > MAX_COMMAND_METADATA_ITEMS:
+        raise validation_error(
+            "command_run_metadata contains too many items",
+            field="command_run_metadata",
+            max_count=MAX_COMMAND_METADATA_ITEMS,
+        )
+
+    for index, item in enumerate(metadata_items):
+        field_prefix = f"command_run_metadata[{index}]"
+        _validate_text_size(
+            item.command,
+            f"{field_prefix}.command",
+            MAX_COMMAND_CHARS,
+        )
+        _validate_text_size(item.cwd, f"{field_prefix}.cwd", MAX_PATH_CHARS)
+        _validate_text_size(
+            item.output_summary,
+            f"{field_prefix}.output_summary",
+            MAX_COMMAND_OUTPUT_SUMMARY_CHARS,
+        )
+        _validate_text_size(
+            item.purpose,
+            f"{field_prefix}.purpose",
+            MAX_COMMAND_PURPOSE_CHARS,
+        )

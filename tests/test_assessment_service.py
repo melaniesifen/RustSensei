@@ -20,7 +20,18 @@ from rust_sensei.dto.lesson import GetNextLessonRequest
 from rust_sensei.dto.session import StartSessionRequest
 from rust_sensei.errors import IdempotencyConflictError, NotFoundError, ValidationError
 from rust_sensei.repositories.json_repository import JsonRepositoryFactory
-from rust_sensei.services.assessment_service import AssessmentService
+from rust_sensei.services.assessment_service import (
+    MAX_CODE_CHARS,
+    MAX_COMMAND_CHARS,
+    MAX_COMMAND_METADATA_ITEMS,
+    MAX_COMMAND_OUTPUT_SUMMARY_CHARS,
+    MAX_COMMAND_PURPOSE_CHARS,
+    MAX_FILE_PATHS,
+    MAX_NOTES_CHARS,
+    MAX_OUTPUT_CHARS,
+    MAX_PATH_CHARS,
+    AssessmentService,
+)
 from rust_sensei.services.lesson_service import LessonService
 from rust_sensei.services.session_service import SessionService
 from tests.constants import (
@@ -171,6 +182,132 @@ def test_submit_attempt_rejects_whitespace_only_text_artifacts(
             SubmitAttemptRequest(
                 assignment_id=assignment_id,
                 **{field_name: "   \n\t  "},
+            )
+        )
+
+
+@pytest.mark.parametrize(
+    ("field_name", "max_chars"),
+    [
+        ("code", MAX_CODE_CHARS),
+        ("compiler_output", MAX_OUTPUT_CHARS),
+        ("runtime_output", MAX_OUTPUT_CHARS),
+        ("test_output", MAX_OUTPUT_CHARS),
+        ("learner_notes", MAX_NOTES_CHARS),
+        ("agent_notes", MAX_NOTES_CHARS),
+    ],
+)
+def test_submit_attempt_rejects_oversized_text_artifacts(
+    tmp_path,
+    field_name,
+    max_chars,
+):
+    _, lesson_service, assessment_service, _ = _services(tmp_path)
+    assignment_id = _create_assignment(lesson_service)
+    payload = {
+        "assignment_id": assignment_id,
+        "code": HELLO_RUST_CODE,
+        field_name: "x" * (max_chars + 1),
+    }
+
+    with pytest.raises(ValidationError):
+        assessment_service.submit_attempt(SubmitAttemptRequest(**payload))
+
+
+def test_submit_attempt_requires_truncation_reason_when_output_truncated(tmp_path):
+    _, lesson_service, assessment_service, _ = _services(tmp_path)
+    assignment_id = _create_assignment(lesson_service)
+
+    with pytest.raises(ValidationError):
+        assessment_service.submit_attempt(
+            SubmitAttemptRequest(
+                assignment_id=assignment_id,
+                code=HELLO_RUST_CODE,
+                output_truncated=True,
+            )
+        )
+
+
+def test_submit_attempt_rejects_too_many_file_paths(tmp_path):
+    _, lesson_service, assessment_service, _ = _services(tmp_path)
+    assignment_id = _create_assignment(lesson_service)
+
+    with pytest.raises(ValidationError):
+        assessment_service.submit_attempt(
+            SubmitAttemptRequest(
+                assignment_id=assignment_id,
+                code=HELLO_RUST_CODE,
+                file_paths=[
+                    f"src/example_{index}.rs"
+                    for index in range(MAX_FILE_PATHS + 1)
+                ],
+            )
+        )
+
+
+def test_submit_attempt_rejects_too_many_command_metadata_items(tmp_path):
+    _, lesson_service, assessment_service, _ = _services(tmp_path)
+    assignment_id = _create_assignment(lesson_service)
+
+    with pytest.raises(ValidationError):
+        assessment_service.submit_attempt(
+            SubmitAttemptRequest(
+                assignment_id=assignment_id,
+                command_run_metadata=[
+                    _command_metadata()
+                    for _ in range(MAX_COMMAND_METADATA_ITEMS + 1)
+                ],
+            )
+        )
+
+
+@pytest.mark.parametrize(
+    ("field_name", "max_chars"),
+    [
+        ("command", MAX_COMMAND_CHARS),
+        ("cwd", MAX_PATH_CHARS),
+        ("output_summary", MAX_COMMAND_OUTPUT_SUMMARY_CHARS),
+        ("purpose", MAX_COMMAND_PURPOSE_CHARS),
+    ],
+)
+def test_submit_attempt_rejects_oversized_command_metadata_fields(
+    tmp_path,
+    field_name,
+    max_chars,
+):
+    _, lesson_service, assessment_service, _ = _services(tmp_path)
+    assignment_id = _create_assignment(lesson_service)
+    metadata = _command_metadata(**{field_name: "x" * (max_chars + 1)})
+
+    with pytest.raises(ValidationError):
+        assessment_service.submit_attempt(
+            SubmitAttemptRequest(
+                assignment_id=assignment_id,
+                command_run_metadata=[metadata],
+            )
+        )
+
+
+@pytest.mark.parametrize(
+    "path",
+    [
+        ".env",
+        "config/.env.local",
+        ".ssh/id_ed25519",
+        "certs/dev.key",
+        "certs/client.pem",
+    ],
+)
+def test_submit_attempt_rejects_secret_bearing_file_paths(tmp_path, path):
+    _, lesson_service, assessment_service, _ = _services(tmp_path)
+    assignment_id = _create_assignment(lesson_service)
+
+    with pytest.raises(ValidationError):
+        assessment_service.submit_attempt(
+            SubmitAttemptRequest(
+                assignment_id=assignment_id,
+                code=HELLO_RUST_CODE,
+                file_paths=[path],
             )
         )
 
@@ -658,6 +795,18 @@ def _create_assignment(lesson_service):
     response = lesson_service.get_next_lesson(GetNextLessonRequest())
     assert response.assignment is not None
     return response.assignment.assignment_id
+
+
+def _command_metadata(**overrides) -> CommandRunMetadataDTO:
+    values = {
+        "command": "cargo check",
+        "source": "agent",
+        "exit_code": 0,
+        "started_at": "2026-05-10T00:00:00Z",
+        "output_summary": "cargo check completed",
+    }
+    values.update(overrides)
+    return CommandRunMetadataDTO(**values)
 
 
 def _services(tmp_path):

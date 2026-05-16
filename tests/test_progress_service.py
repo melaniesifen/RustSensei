@@ -163,6 +163,7 @@ def test_get_progress_summary_reports_repeated_concept(tmp_path):
             runtime_output="failed",
             agent_notes="Agent says this passes.",
             output_truncated=True,
+            truncation_reason="test fixture keeps output short",
         )
     )
     assessment_service.assess_attempt(AssessAttemptRequest(attempt_id=submitted.attempt_id))
