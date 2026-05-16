@@ -24,6 +24,8 @@ This repository contains design documentation and a local Python implementation 
 - Atomic JSON writes with file locking, state revision tracking, and best-effort recovery from the latest valid backup when the primary state file is unreadable.
 - Session service for initial placement, active profile retrieval, and learner signal recording.
 - Lesson service for first assignment selection, active assignment reuse, active-assignment abandonment, pending-assessment detection, and post-assessment adaptive selection.
+- `get_next_lesson` includes agent-owned workspace suggestions for stable per-assignment paths, including generated Cargo package scaffolds for normal lessons and directory-only handling for `cargo new` project-setup lessons.
+- `rust_sensei.agent_workspace.prepare_lesson_workspace` creates or reuses the suggested local lesson directory and starter Cargo files without overwriting learner code.
 - Adaptive lesson selection handlers live in `rust_sensei/domain/lesson_selection.py`, including branch target resolution and deterministic prompt variant rotation.
 - Assessment service implements `submit_attempt` and an initial `assess_attempt` flow with persisted idempotent assessment records, nonblank evidence validation, strict command metadata source/risk validation, artifact size limits, truncation-reason checks, and secret-bearing path rejection.
 - Deterministic rubric scoring, confidence measuring, and confidence explanations live in `rust_sensei/domain/scoring.py`.
@@ -64,6 +66,7 @@ Known limitations:
 - MCP tools expose direct typed parameters in the registered FastMCP handlers instead of an opaque `payload` wrapper. Project DTO validation still owns validation error envelopes.
 - `force_new_variant` is supported only with `abandon_active_assignment` while an active assignment exists.
 - `assess_attempt` uses deterministic scoring only. It does not call an LLM.
+- Opening the suggested lesson file or directory in VS Code remains an agent/client responsibility, not server behavior.
 - v1 still supports only `local-default` as the learner id.
 
 ## Current MCP Verification
@@ -164,7 +167,7 @@ If `python3 --version` still shows the system Python `3.9.6`, run `source ~/.zsh
 
 Latest known verification:
 
-- `180` tests passed under Python `3.14.5` in `.venv`.
+- `193` tests passed under Python `3.14.5` in `.venv`.
 - Real FastMCP integration coverage passed with `mcp==1.27.1`.
 - Prior coverage passed at `93.30%`.
 
@@ -172,8 +175,8 @@ Latest known verification:
 
 Recommended implementation order:
 
-1. Add lesson workspace artifact support so the agent creates/reuses a per-assignment Rust file except for project-setup lessons such as `cargo new`, opens the appropriate file or directory in VS Code, and submits generated paths as attempt evidence.
-2. Add lesson report generation so the agent writes a per-assignment `report.md` after assessment with Rust Sensei scores, confidence, feedback, and next action.
+1. Add lesson report generation so the agent writes a per-assignment `report.md` after assessment with Rust Sensei scores, confidence, feedback, and next action.
+2. Integrate lesson workspace suggestions into a live agent workflow that opens the suggested file or directory in VS Code and submits generated paths as attempt evidence.
 3. Continue hardening validation, privacy limits, and current reduced-shape curriculum validation.
 4. Implement richer adaptive-model gaps when ready: branch-emitting scoring, placement skip events, granular adaptive progress events, and richer concept graph metadata.
 

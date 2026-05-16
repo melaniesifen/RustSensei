@@ -78,6 +78,7 @@ The MCP interface layer converts tool calls into service calls. Application serv
 rust_sensei/
   __init__.py
   __main__.py
+  agent_workspace.py
   cli.py
   constants.py
   errors.py
@@ -99,6 +100,7 @@ rust_sensei/
     signal.py
     skill.py
     skill_update.py
+    workspace.py
   dto/
     assessment.py
     attempt.py
@@ -211,6 +213,10 @@ class LessonPlanDTO(BaseModel):
     lesson_commands: list[LessonCommandDTO] = Field(default_factory=list)
     hints: list[str] = Field(default_factory=list)
     rubric_ids: list[str]
+    workspace_artifact_policy: Literal[
+        "cargo_binary_package",
+        "manual_cargo_project",
+    ]
 
 
 class LessonAssignmentDTO(BaseModel):
@@ -307,13 +313,17 @@ class GetNextLessonResponse(BaseModel):
     reused_active_assignment: bool
     pending_assessment: bool = False
     pending_attempt_id: str | None = None
+    workspace_suggestion: AssignmentWorkspaceSuggestionDTO | None = None
 
 
 class AssignmentWorkspaceSuggestionDTO(BaseModel):
     assignment_id: str
     workspace_dir: str
-    lesson_file_path: str
+    package_root: str | None = None
+    lesson_file_path: str | None = None
     report_file_path: str
+    open_path: str
+    create_cargo_package: bool
 
 
 class SubmitAttemptRequest(BaseModel):
@@ -423,7 +433,7 @@ class GetSetupStatusResponse(BaseModel):
 
 DTO mapping rule: MCP request and response models are Pydantic DTOs. Domain models may use dataclasses internally. Services must map explicitly between API DTOs and domain models instead of returning raw dataclasses through the MCP boundary.
 
-Future contract note: lesson workspace files and report files are agent-owned artifacts, not canonical Rust Sensei state. A later `get_next_lesson` response may include an optional `AssignmentWorkspaceSuggestionDTO` so agents can create/open lesson files consistently while keeping editor control outside the MCP server.
+Workspace contract note: lesson workspace files and report files are agent-owned artifacts, not canonical Rust Sensei state. `get_next_lesson` responses include an optional `AssignmentWorkspaceSuggestionDTO` so agents can create or open lesson files consistently while keeping editor control outside the MCP server.
 
 Validation rule: `assignment_id` is required for `submit_attempt`. At least 1 assessable artifact is also required: code, compiler output, runtime output, test output, or complete command run metadata. Missing code by itself is not a validation error when another assessable artifact exists.
 

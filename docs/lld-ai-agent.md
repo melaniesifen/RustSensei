@@ -116,7 +116,7 @@ The agent owns local editor and filesystem ergonomics for lessons. Rust Sensei r
 Required agent behavior:
 
 1. After `get_next_lesson` returns an assignment, derive a stable per-assignment workspace directory.
-2. Prefer a path inside the learner workspace, such as `./rust-sensei-lessons/assign_000001/`, when the current workspace is writable.
+2. Prefer the returned `workspace_suggestion` when present. It uses relative paths such as `./rust-sensei-lessons/assign_000001/` so the agent can anchor them inside the learner workspace or a fallback workspace.
 3. If no suitable project workspace is available, use a dedicated local fallback such as `~/rust-sensei-workspace/lessons/assign_000001/`.
 4. Create a buildable assignment workspace before presenting the coding task, unless the lesson explicitly asks the learner to practice project creation.
 5. For normal single-file beginner lessons, create a minimal Cargo package in the assignment directory with `Cargo.toml` and `src/main.rs`.

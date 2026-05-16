@@ -68,6 +68,10 @@ class LessonVariantSpec:
     success_criteria: list[str]
     hints: list[str]
     lesson_commands: list[dict]
+    workspace_artifact_policy: Literal[
+        "cargo_binary_package",
+        "manual_cargo_project",
+    ]
 
 
 @dataclass
@@ -92,6 +96,17 @@ class ConceptSpec:
 The implemented v1 `Concept` shape is intentionally smaller:
 
 ```python
+@dataclass(frozen=True)
+class LessonVariant:
+    variant_id: str
+    difficulty: str
+    prompt: str
+    success_criteria: list[str]
+    hints: list[str]
+    lesson_commands: list[LessonCommand]
+    workspace_artifact_policy: str
+
+
 @dataclass(frozen=True)
 class Concept:
     concept_id: str
@@ -434,6 +449,7 @@ Current v1 required checks:
 - All branch target ids exist.
 - All rubric ids are known.
 - Every variant id is unique within a concept and stable within a curriculum version.
+- Every variant uses a known workspace artifact policy.
 - Every variant references valid command metadata for non-allowlisted commands.
 
 Target richer graph checks:
