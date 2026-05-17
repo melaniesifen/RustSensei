@@ -26,6 +26,7 @@ Primary sources of truth:
 - `get_next_lesson` can abandon the active assignment when `abandon_active_assignment` is true and a non-empty `abandonment_reason` is supplied. `force_new_variant` is supported only with abandonment while an active assignment exists.
 - `get_next_lesson` returns an agent-owned `workspace_suggestion` with stable per-assignment relative paths. Normal lessons suggest a generated Cargo binary package and lesson file. Project-setup lessons such as `cargo new` suggest a directory to open without pre-creating a Cargo package.
 - `rust_sensei.agent_workspace.prepare_lesson_workspace` creates or reuses suggested lesson directories and starter Cargo files without overwriting learner code. Opening VS Code remains an agent/client action.
+- `rust_sensei.agent_report.write_lesson_report` writes a stable per-assignment `report.md` after assessment. The report includes assignment details, submitted artifacts, command lists, a readable assessment summary, and the canonical Rust Sensei assessment DTO as JSON.
 - Progress events are persisted for assignment creation/viewing, attempt submission, assessment, and assignment abandonment. Lifecycle events for creation, attempt submission, assessment, and abandonment are written in the same JSON transaction as the canonical state change.
 - `get_progress_summary` returns completed/repeated/skipped concepts, recent events, recommended focus, and trend.
 - `update_learner_signal` records non-code learner signals such as confusion, confidence, blockers, pacing, boredom, too-easy, and too-hard feedback.
@@ -40,10 +41,9 @@ Primary sources of truth:
 
 Use this order when continuing implementation:
 
-1. Add lesson report generation so the agent writes a per-assignment `report.md` after assessment with Rust Sensei scores, confidence, feedback, and next action.
-2. Integrate lesson workspace suggestions into a live agent workflow that opens the suggested file or directory in VS Code and submits generated paths as attempt evidence.
-3. Continue hardening validation, privacy limits, and current reduced-shape curriculum validation.
-4. Implement richer adaptive-model gaps when ready: branch-emitting scoring, placement skip events, granular adaptive progress events, and richer concept graph metadata.
+1. Integrate lesson workspace suggestions and report generation into a live agent workflow that opens the suggested file or directory in VS Code and submits generated paths as attempt evidence.
+2. Continue hardening validation, privacy limits, and current reduced-shape curriculum validation.
+3. Implement richer adaptive-model gaps when ready: branch-emitting scoring, placement skip events, granular adaptive progress events, and richer concept graph metadata.
 
 Important current behavior:
 
@@ -88,8 +88,9 @@ The implementation now uses the following package layout. Follow this shape unle
 rust_sensei/
   __init__.py
   __main__.py
-  cli.py
+  agent_report.py
   agent_workspace.py
+  cli.py
   mcp_server.py
   domain/
     attempt.py
@@ -182,7 +183,7 @@ Notes:
 - The project target is Python 3.11+. Do not lower `python_requires` only to satisfy an older local system Python.
 - If `python3 --version` shows `/usr/bin/python3` era Python `3.9.6`, source `~/.zshrc` or open a new shell before creating `.venv`.
 - Agents should run pip, setup diagnostics, tests, and coverage through `.venv/bin/python`; do not assume `python`, `pip`, or `pytest` are on the shell `PATH` or that the virtual environment is activated.
-- Latest known local verification: `193` tests passed under Python `3.14.5` in `.venv`; prior coverage passed with `93.30%`.
+- Latest known local verification: `204` tests passed under Python `3.14.5` in `.venv`; prior coverage passed with `93.30%`.
 - Real MCP SDK verification is no longer blocked locally after sourcing `~/.zshrc`, using Homebrew Python `3.14.5`, creating `.venv`, and installing `.[dev-mcp]`. `mcp==1.27.1` imported successfully, and FastMCP tests cover tools, resources, prompts, direct-parameter schemas, runtime tool flows, resource reads, prompt reads, and structured validation errors.
 - For learner Rust workspaces outside this server, allowed verification commands are limited by the AI Agent LLD to standard Cargo checks or lesson-provided commands.
 

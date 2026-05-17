@@ -78,6 +78,7 @@ The MCP interface layer converts tool calls into service calls. Application serv
 rust_sensei/
   __init__.py
   __main__.py
+  agent_report.py
   agent_workspace.py
   cli.py
   constants.py
