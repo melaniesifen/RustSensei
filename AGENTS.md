@@ -25,6 +25,9 @@ Primary sources of truth:
 - `get_next_lesson` rotates deterministic unused prompt variants for the selected concept and difficulty before reusing the first matching variant.
 - `get_next_lesson` can abandon the active assignment when `abandon_active_assignment` is true and a non-empty `abandonment_reason` is supplied. `force_new_variant` is supported only with abandonment while an active assignment exists.
 - `get_next_lesson` returns an agent-owned `workspace_suggestion` with stable per-assignment relative paths. Normal lessons suggest a generated Cargo binary package and lesson file. Project-setup lessons such as `cargo new` suggest a directory to open without pre-creating a Cargo package.
+- `rust_sensei.agent_workflow.prepare_agent_lesson` composes `get_next_lesson` responses with workspace preparation, supports caller-provided editor openers, and returns generated relative paths for attempt evidence.
+- `rust_sensei.agent_workflow.build_submit_attempt_request` builds `SubmitAttemptRequest` DTOs from prepared lesson workspaces, generated file paths, current lesson file contents, command evidence, and learner/agent notes.
+- `rust_sensei.agent_workflow.write_agent_lesson_report` writes report files from the prepared workspace, submitted attempt evidence, and canonical assessment output.
 - `rust_sensei.agent_workspace.prepare_lesson_workspace` creates or reuses suggested lesson directories and starter Cargo files without overwriting learner code. Opening VS Code remains an agent/client action.
 - `rust_sensei.agent_report.write_lesson_report` writes a stable per-assignment `report.md` after assessment. The report includes assignment details, submitted artifacts, command lists, a readable assessment summary, and the canonical Rust Sensei assessment DTO as JSON.
 - Progress events are persisted for assignment creation/viewing, attempt submission, assessment, and assignment abandonment. Lifecycle events for creation, attempt submission, assessment, and abandonment are written in the same JSON transaction as the canonical state change.
@@ -41,15 +44,16 @@ Primary sources of truth:
 
 Use this order when continuing implementation:
 
-1. Integrate lesson workspace suggestions and report generation into a live agent workflow that opens the suggested file or directory in VS Code and submits generated paths as attempt evidence.
-2. Continue hardening validation, privacy limits, and current reduced-shape curriculum validation.
-3. Implement richer adaptive-model gaps when ready: branch-emitting scoring, placement skip events, granular adaptive progress events, and richer concept graph metadata.
+1. Continue hardening validation, privacy limits, and current reduced-shape curriculum validation.
+2. Implement richer adaptive-model gaps when ready: branch-emitting scoring, placement skip events, granular adaptive progress events, and richer concept graph metadata.
+3. Add fuller agent/client examples around the workflow helper if a target MCP client needs setup-specific glue.
 
 Important current behavior:
 
 - `start_session` creates the profile only after a valid `RustLevel` placement.
 - `get_next_lesson` creates an active assignment, reuses active assignments, abandons active assignments with a required reason, returns pending assessment after an attempt, and creates a post-assessment assignment from `repeat`, `simplify`, `continue`, `accelerate`, or a stored branch action. The deterministic v1 scorer currently emits only `repeat`, `simplify`, `continue`, and `accelerate`.
 - `get_next_lesson` includes `workspace_suggestion` for assignment responses. Pending-assessment responses have no assignment, no lesson plan, and no workspace suggestion.
+- Agent workflow helpers can prepare the suggested workspace, open the suggested path through a caller-provided opener such as VS Code, collect generated relative file paths and current lesson code into a `SubmitAttemptRequest`, and write the report after assessment. These helpers are not MCP tools and do not make the server control the editor.
 - Branch targets are configured in curriculum JSON with concept-level `branch_targets` and top-level `branch_fallbacks`. Target concept ids are validated when loading the curriculum.
 - The implemented curriculum model is the reduced v1 shape: concept id, title, order, default difficulty, learner command, rubric ids, variants, and branch targets. Rich graph metadata such as prerequisites, competency goals, stretch/struggle signals, next concepts, and completion thresholds is design target work, not current code.
 - Placement currently selects the active starting concept but does not emit `provisionally_skipped` events for earlier concepts.
@@ -88,6 +92,7 @@ The implementation now uses the following package layout. Follow this shape unle
 rust_sensei/
   __init__.py
   __main__.py
+  agent_workflow.py
   agent_report.py
   agent_workspace.py
   cli.py

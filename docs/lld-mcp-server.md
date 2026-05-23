@@ -78,6 +78,7 @@ The MCP interface layer converts tool calls into service calls. Application serv
 rust_sensei/
   __init__.py
   __main__.py
+  agent_workflow.py
   agent_report.py
   agent_workspace.py
   cli.py
@@ -434,7 +435,7 @@ class GetSetupStatusResponse(BaseModel):
 
 DTO mapping rule: MCP request and response models are Pydantic DTOs. Domain models may use dataclasses internally. Services must map explicitly between API DTOs and domain models instead of returning raw dataclasses through the MCP boundary.
 
-Workspace contract note: lesson workspace files and report files are agent-owned artifacts, not canonical Rust Sensei state. `get_next_lesson` responses include an optional `AssignmentWorkspaceSuggestionDTO` so agents can create or open lesson files consistently while keeping editor control outside the MCP server.
+Workspace contract note: lesson workspace files and report files are agent-owned artifacts, not canonical Rust Sensei state. `get_next_lesson` responses include an optional `AssignmentWorkspaceSuggestionDTO` so agents can create or open lesson files consistently while keeping editor control outside the MCP server. The optional `rust_sensei.agent_workflow` helpers compose these DTOs with local workspace preparation, caller-provided editor openers, attempt DTO construction, and report writing; they are not MCP tools and do not make the server control VS Code.
 
 Validation rule: `assignment_id` is required for `submit_attempt`. At least 1 assessable artifact is also required: code, compiler output, runtime output, test output, or complete command run metadata. Missing code by itself is not a validation error when another assessable artifact exists.
 

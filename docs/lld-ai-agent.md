@@ -126,6 +126,8 @@ Required agent behavior:
 9. Reuse the same assignment directory and file when the active assignment is reused. Do not overwrite learner code for an existing assignment without confirmation.
 10. Include generated lesson file paths in `submit_attempt.file_paths` and read those files when collecting assessment evidence.
 
+Implementation note: `rust_sensei.agent_workflow.prepare_agent_lesson` and `build_submit_attempt_request` provide this composition for Python-based agent integrations. The opener is caller-provided so VS Code control remains an agent/client action, not MCP server behavior.
+
 Recommended artifact layout:
 
 ```text
@@ -153,6 +155,8 @@ Report contents should include:
 - Clearly separated optional agent guidance.
 
 The report filename should be stable for the assignment, normally `report.md`. Regenerating a report for the same assessment may overwrite the previous report; regenerating after a new assessment should preserve the canonical assessment data from Rust Sensei.
+
+Implementation note: `rust_sensei.agent_workflow.write_agent_lesson_report` writes the report next to the prepared workspace using the canonical `assess_attempt` result and the submitted attempt evidence.
 
 ### 4.6 Codex Setup
 

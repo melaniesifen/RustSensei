@@ -25,6 +25,9 @@ This repository contains design documentation and a local Python implementation 
 - Session service for initial placement, active profile retrieval, and learner signal recording.
 - Lesson service for first assignment selection, active assignment reuse, active-assignment abandonment, pending-assessment detection, and post-assessment adaptive selection.
 - `get_next_lesson` includes agent-owned workspace suggestions for stable per-assignment paths, including generated Cargo package scaffolds for normal lessons and directory-only handling for `cargo new` project-setup lessons.
+- `rust_sensei.agent_workflow.prepare_agent_lesson` composes workspace suggestions with the local workspace helper, supports caller-provided editor openers such as VS Code, and keeps generated lesson paths ready for attempt evidence.
+- `rust_sensei.agent_workflow.build_submit_attempt_request` builds attempt DTOs from prepared lesson workspaces, including generated relative file paths and current lesson file contents when present.
+- `rust_sensei.agent_workflow.write_agent_lesson_report` writes the per-assignment report from the prepared workspace, submitted attempt evidence, and canonical assessment result.
 - `rust_sensei.agent_workspace.prepare_lesson_workspace` creates or reuses the suggested local lesson directory and starter Cargo files without overwriting learner code.
 - `rust_sensei.agent_report.write_lesson_report` writes a stable per-assignment Markdown report after assessment with the canonical Rust Sensei assessment embedded as JSON.
 - Adaptive lesson selection handlers live in `rust_sensei/domain/lesson_selection.py`, including branch target resolution and deterministic prompt variant rotation.
@@ -67,7 +70,7 @@ Known limitations:
 - MCP tools expose direct typed parameters in the registered FastMCP handlers instead of an opaque `payload` wrapper. Project DTO validation still owns validation error envelopes.
 - `force_new_variant` is supported only with `abandon_active_assignment` while an active assignment exists.
 - `assess_attempt` uses deterministic scoring only. It does not call an LLM.
-- Opening the suggested lesson file or directory in VS Code remains an agent/client responsibility, not server behavior.
+- Opening the suggested lesson file or directory in VS Code remains an agent/client responsibility, not server behavior. The agent workflow helper accepts an opener callback and includes `open_with_vscode` for clients that explicitly choose that integration.
 - v1 still supports only `local-default` as the learner id.
 
 ## Current MCP Verification
@@ -176,9 +179,9 @@ Latest known verification:
 
 Recommended implementation order:
 
-1. Integrate lesson workspace suggestions and report generation into a live agent workflow that opens the suggested file or directory in VS Code and submits generated paths as attempt evidence.
-2. Continue hardening validation, privacy limits, and current reduced-shape curriculum validation.
-3. Implement richer adaptive-model gaps when ready: branch-emitting scoring, placement skip events, granular adaptive progress events, and richer concept graph metadata.
+1. Continue hardening validation, privacy limits, and current reduced-shape curriculum validation.
+2. Implement richer adaptive-model gaps when ready: branch-emitting scoring, placement skip events, granular adaptive progress events, and richer concept graph metadata.
+3. Add fuller agent/client examples around the new workflow helper if a target MCP client needs setup-specific glue.
 
 ## Documents
 
