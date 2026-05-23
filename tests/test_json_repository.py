@@ -591,6 +591,40 @@ def test_assessment_repository_saves_assessment_with_existing_wrapper(tmp_path):
     ) == assignment
 
 
+def test_assessment_repository_saves_multiple_progress_events(tmp_path):
+    from rust_sensei.domain.enums import AssignmentStatus
+
+    repositories = JsonRepositoryFactory(tmp_path)
+    assignment = _assignment(AssignmentStatus.ASSESSED)
+    assessment = _assessment("attempt_1", assignment.assignment_id)
+
+    repositories.assessment_repository().save_assessment_for_assignment(
+        assessment,
+        assignment,
+        event_factory=lambda saved: [
+            _progress_event(
+                event_type=ProgressEventType.ASSESSED,
+                assignment_id=saved.assignment_id,
+            ),
+            _progress_event(
+                event_type=ProgressEventType.COMPLETED,
+                assignment_id=saved.assignment_id,
+            ),
+        ],
+    )
+
+    events = repositories.progress_event_repository().list_recent_events(
+        TEST_LEARNER_ID,
+        limit=2,
+    )
+    assert [event.event_id for event in events] == ["event_000002", "event_000001"]
+    assert [event.event_type for event in events] == [
+        ProgressEventType.COMPLETED,
+        ProgressEventType.ASSESSED,
+    ]
+    assert all(event.assignment_id == assignment.assignment_id for event in events)
+
+
 def test_assessment_repository_reads_legacy_assessment_without_scoring_provenance(
     tmp_path,
 ):

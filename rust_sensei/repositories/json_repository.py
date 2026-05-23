@@ -281,7 +281,10 @@ class JsonAssessmentRepository:
         self,
         result: AssessmentResult,
         assignment: LessonAssignment,
-        event_factory: Callable[[AssessmentResult], ProgressEvent] | None = None,
+        event_factory: (
+            Callable[[AssessmentResult], ProgressEvent | Iterable[ProgressEvent]]
+            | None
+        ) = None,
     ) -> tuple[AssessmentResult, bool]:
         return self.save_assessment_for_assignment_and_profile(
             result=result,
@@ -297,7 +300,10 @@ class JsonAssessmentRepository:
         profile_updater: (
             Callable[[AssessmentResult, LearnerProfile], LearnerProfile] | None
         ),
-        event_factory: Callable[[AssessmentResult], ProgressEvent] | None = None,
+        event_factory: (
+            Callable[[AssessmentResult], ProgressEvent | Iterable[ProgressEvent]]
+            | None
+        ) = None,
     ) -> tuple[AssessmentResult, bool]:
         def transaction(
             state: dict[str, Any],
@@ -330,7 +336,8 @@ class JsonAssessmentRepository:
                     JsonLearnerRepository._profile_to_state(profile)
                 )
             if event_factory is not None:
-                _append_progress_event(state, event_factory(created))
+                for event in _progress_events(event_factory(created)):
+                    _append_progress_event(state, event)
             return (created, True), True
 
         return self._store.transact(transaction)
@@ -919,6 +926,14 @@ def _append_progress_event(
     )
     state["progress_events"].append(_progress_event_to_state(created))
     return created
+
+
+def _progress_events(
+    event_or_events: ProgressEvent | Iterable[ProgressEvent],
+) -> list[ProgressEvent]:
+    if isinstance(event_or_events, ProgressEvent):
+        return [event_or_events]
+    return list(event_or_events)
 
 
 def _signal_from_state(data: dict[str, Any]) -> LearnerSignal:

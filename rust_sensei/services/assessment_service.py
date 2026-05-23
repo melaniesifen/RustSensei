@@ -7,8 +7,10 @@ from datetime import datetime
 from typing import Any
 
 from rust_sensei.constants import ACTIVE_LEARNER_ID
+from rust_sensei.domain.assessment import AssessmentResult
 from rust_sensei.domain.attempt import AttemptSubmission
-from rust_sensei.domain.enums import AssignmentStatus
+from rust_sensei.domain.enums import AssignmentStatus, NextAction
+from rust_sensei.domain.lesson import LessonAssignment
 from rust_sensei.domain.progress import ProgressEvent, ProgressEventType
 from rust_sensei.domain.scoring import AssessmentScorer, DeterministicAssessmentScorer
 from rust_sensei.domain.skill_update import update_skill_model
@@ -36,6 +38,13 @@ from rust_sensei.repositories.interfaces import (
 )
 
 LOGGER = logging.getLogger(__name__)
+ADAPTIVE_EVENT_TYPE_BY_NEXT_ACTION = {
+    NextAction.CONTINUE: ProgressEventType.COMPLETED,
+    NextAction.REPEAT: ProgressEventType.REPEATED,
+    NextAction.SIMPLIFY: ProgressEventType.SIMPLIFIED,
+    NextAction.ACCELERATE: ProgressEventType.ACCELERATED,
+    NextAction.BRANCH: ProgressEventType.BRANCHED,
+}
 COMMAND_METADATA_SOURCES = {"learner", "agent"}
 MAX_CODE_CHARS = 50_000
 MAX_OUTPUT_CHARS = 30_000
@@ -239,21 +248,11 @@ class AssessmentService:
                     ),
                     updated_at=now,
                 ),
-                event_factory=lambda saved_assessment: ProgressEvent(
-                    event_id="",
+                event_factory=lambda saved_assessment: _assessment_progress_events(
+                    saved_assessment=saved_assessment,
+                    assignment=assignment,
                     learner_id=attempt.learner_id,
-                    event_type=ProgressEventType.ASSESSED,
-                    assignment_id=saved_assessment.assignment_id,
-                    attempt_id=saved_assessment.attempt_id,
-                    assessment_id=saved_assessment.assessment_id,
-                    details={
-                        "assessment_status": saved_assessment.assessment_status,
-                        "confidence": saved_assessment.confidence,
-                        "next_action": saved_assessment.next_action.value,
-                    },
-                    previous_status=AssignmentStatus.ATTEMPTED.value,
-                    new_status=AssignmentStatus.ASSESSED.value,
-                    created_at=now,
+                    now=now,
                 ),
             )
         )
@@ -374,6 +373,61 @@ def _attempt_from_request(
         learner_execution_missing=request.learner_execution_missing,
         learner_execution_notes=request.learner_execution_notes,
         submitted_at=submitted_at,
+    )
+
+
+def _assessment_progress_events(
+    saved_assessment: AssessmentResult,
+    assignment: LessonAssignment,
+    learner_id: str,
+    now: datetime,
+) -> list[ProgressEvent]:
+    common_details = {
+        "lesson_id": assignment.lesson_id,
+        "concept_id": assignment.concept_id,
+        "assessment_status": saved_assessment.assessment_status,
+        "confidence": saved_assessment.confidence,
+        "next_action": saved_assessment.next_action.value,
+        "next_action_reason": saved_assessment.next_action_reason,
+    }
+    if saved_assessment.branch_id is not None:
+        common_details["branch_id"] = saved_assessment.branch_id
+
+    assessed_event = _assessment_progress_event(
+        saved_assessment=saved_assessment,
+        learner_id=learner_id,
+        event_type=ProgressEventType.ASSESSED,
+        details=common_details,
+        now=now,
+    )
+    adaptive_event = _assessment_progress_event(
+        saved_assessment=saved_assessment,
+        learner_id=learner_id,
+        event_type=ADAPTIVE_EVENT_TYPE_BY_NEXT_ACTION[saved_assessment.next_action],
+        details=common_details,
+        now=now,
+    )
+    return [assessed_event, adaptive_event]
+
+
+def _assessment_progress_event(
+    saved_assessment: AssessmentResult,
+    learner_id: str,
+    event_type: ProgressEventType,
+    details: dict[str, Any],
+    now: datetime,
+) -> ProgressEvent:
+    return ProgressEvent(
+        event_id="",
+        learner_id=learner_id,
+        event_type=event_type,
+        assignment_id=saved_assessment.assignment_id,
+        attempt_id=saved_assessment.attempt_id,
+        assessment_id=saved_assessment.assessment_id,
+        details=dict(details),
+        previous_status=AssignmentStatus.ATTEMPTED.value,
+        new_status=AssignmentStatus.ASSESSED.value,
+        created_at=now,
     )
 
 

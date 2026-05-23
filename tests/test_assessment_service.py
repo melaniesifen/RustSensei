@@ -455,9 +455,14 @@ def test_assess_attempt_persists_scores_confidence_and_marks_assessed(tmp_path):
         profile.skill_model.rust_concepts[CARGO_HELLO_WORLD_CONCEPT_ID].evidence
     )
     assert profile.skill_model.programming_dimensions == {}
-    assert events[0].event_type == ProgressEventType.ASSESSED
+    assert events[0].event_type == _adaptive_event_type(assessment.next_action)
     assert events[0].assessment_id == ASSESSMENT_ID_1
     assert events[0].details["next_action"] == assessment.next_action.value
+    assert events[0].details["next_action_reason"] == assessment.next_action_reason
+    assert events[0].details["concept_id"] == CARGO_HELLO_WORLD_CONCEPT_ID
+    assert events[1].event_type == ProgressEventType.ASSESSED
+    assert events[1].assessment_id == ASSESSMENT_ID_1
+    assert events[1].details["next_action"] == assessment.next_action.value
 
 
 def test_assess_attempt_uses_injected_scorer_boundary(tmp_path):
@@ -481,6 +486,41 @@ def test_assess_attempt_uses_injected_scorer_boundary(tmp_path):
     assert response.assessment.scoring_version == "test-scorer-v1"
     assert response.assessment.scoring_provenance is not None
     assert response.assessment.scoring_provenance.scorer_name == "test-scorer"
+
+
+def test_assess_attempt_records_branch_progress_event_with_branch_id(tmp_path):
+    _, lesson_service, _, repositories = _services(tmp_path)
+    assignment_id = _create_assignment(lesson_service)
+    submitted = _assessment_service(repositories).submit_attempt(
+        SubmitAttemptRequest(
+            assignment_id=assignment_id,
+            code=HELLO_RUST_CODE,
+            compiler_output=SUCCESSFUL_CARGO_OUTPUT,
+        )
+    )
+    assessment_service = _assessment_service(
+        repositories,
+        scorer=_NextActionScorer(
+            next_action=NextAction.BRANCH,
+            branch_id="compiler_feedback_remediation",
+        ),
+    )
+
+    response = assessment_service.assess_attempt(
+        AssessAttemptRequest(attempt_id=submitted.attempt_id)
+    )
+
+    events = repositories.progress_event_repository().list_recent_events(
+        TEST_LEARNER_ID,
+        limit=5,
+    )
+    assert response.assessment.next_action == NextAction.BRANCH
+    assert response.assessment.branch_id == "compiler_feedback_remediation"
+    assert events[0].event_type == ProgressEventType.BRANCHED
+    assert events[0].details["next_action"] == NextAction.BRANCH.value
+    assert events[0].details["branch_id"] == "compiler_feedback_remediation"
+    assert events[0].details["next_action_reason"] == "test branch action"
+    assert events[1].event_type == ProgressEventType.ASSESSED
 
 
 def test_assess_attempt_rejects_scorer_without_provenance(tmp_path):
@@ -931,6 +971,16 @@ def _state_revision(tmp_path):
     return state["state_revision"]
 
 
+def _adaptive_event_type(next_action: NextAction) -> ProgressEventType:
+    return {
+        NextAction.CONTINUE: ProgressEventType.COMPLETED,
+        NextAction.REPEAT: ProgressEventType.REPEATED,
+        NextAction.SIMPLIFY: ProgressEventType.SIMPLIFIED,
+        NextAction.ACCELERATE: ProgressEventType.ACCELERATED,
+        NextAction.BRANCH: ProgressEventType.BRANCHED,
+    }[next_action]
+
+
 class _RecordingScorer:
     def __init__(self) -> None:
         self.calls = 0
@@ -969,4 +1019,25 @@ class _MissingProvenanceScorer:
                 now=now,
             ),
             scoring_provenance=None,
+        )
+
+
+class _NextActionScorer:
+    def __init__(self, next_action: NextAction, branch_id: str | None = None) -> None:
+        self._next_action = next_action
+        self._branch_id = branch_id
+
+    def score_attempt(self, attempt, concept, difficulty, now) -> AssessmentResult:
+        from rust_sensei.domain.scoring import build_assessment
+
+        return replace(
+            build_assessment(
+                attempt=attempt,
+                concept=concept,
+                difficulty=difficulty,
+                now=now,
+            ),
+            next_action=self._next_action,
+            branch_id=self._branch_id,
+            next_action_reason="test branch action",
         )

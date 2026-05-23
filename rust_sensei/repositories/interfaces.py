@@ -103,7 +103,10 @@ class AssessmentRepository(Protocol):
         self,
         result: AssessmentResult,
         assignment: LessonAssignment,
-        event_factory: Callable[[AssessmentResult], ProgressEvent] | None = None,
+        event_factory: (
+            Callable[[AssessmentResult], ProgressEvent | Iterable[ProgressEvent]]
+            | None
+        ) = None,
     ) -> tuple[AssessmentResult, bool]:
         ...
 
@@ -112,7 +115,10 @@ class AssessmentRepository(Protocol):
         result: AssessmentResult,
         assignment: LessonAssignment,
         profile_updater: Callable[[AssessmentResult, LearnerProfile], LearnerProfile],
-        event_factory: Callable[[AssessmentResult], ProgressEvent] | None = None,
+        event_factory: (
+            Callable[[AssessmentResult], ProgressEvent | Iterable[ProgressEvent]]
+            | None
+        ) = None,
     ) -> tuple[AssessmentResult, bool]:
         ...
 
