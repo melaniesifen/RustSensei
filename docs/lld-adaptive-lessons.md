@@ -23,7 +23,7 @@ Primary requirement links:
 - `AL-FR-04`: Future richer concept specs should define stretch signals.
 - `AL-FR-05`: Future richer concept specs should define struggle signals.
 - `AL-FR-06`: Lesson selection must use learner profile, recent assessments, and confidence.
-- `AL-FR-07`: Lesson selection must support `simplify`, `repeat`, `continue`, `accelerate`, and stored `branch` actions. The current deterministic scorer does not emit `branch`.
+- `AL-FR-07`: Lesson selection must support `simplify`, `repeat`, `continue`, `accelerate`, and `branch` actions. The current deterministic scorer emits `branch` for high-confidence repeated compiler failures.
 - `AL-FR-08`: Placement handling records provisional skips for earlier concepts when a learner starts as `proficient` or `expert`.
 - `AL-FR-09`: Demonstrated mastery may mark a concept complete without assigning all practice variants.
 - `AL-FR-10`: The system must record why a lesson was selected.
@@ -307,7 +307,7 @@ Placement skip behavior:
 
 Target next-step action selection should use ordered rules instead of a hardcoded conditional chain. The first matching rule wins. New action types or thresholds should be added by changing rule data or adding a rule object.
 
-Current v1 deterministic scoring uses explicit threshold logic and emits `repeat`, `simplify`, `continue`, or `accelerate`. It does not emit `branch`; branch resolution is implemented in lesson selection for stored branch assessments and future branch-capable scorers.
+Current v1 deterministic scoring uses ordered next-step rules and emits `repeat`, `simplify`, `continue`, `accelerate`, or a high-confidence compiler-remediation `branch`. Branch resolution is implemented in lesson selection for stored branch assessments.
 
 Specific branch and remediation rules must run before broad low-score rules.
 
@@ -496,7 +496,7 @@ Diagram description:
 5. Rust Sensei updates concept scores and confidence.
 6. Rust Sensei picks one next-step action.
 7. In current v1, the next prompt is easier, similar, normal, or harder based on evidence.
-8. Future branch-capable scoring may return a branched prompt based on high-confidence remediation or enrichment evidence.
+8. Current deterministic scoring may return a branched prompt for high-confidence compiler remediation evidence. Future scoring may add enrichment branches from richer problem-solving signals.
 
 ## 7. Failure Scenarios
 

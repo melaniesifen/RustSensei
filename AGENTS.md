@@ -21,7 +21,7 @@ Primary sources of truth:
 - Implemented flows: `start_session`, `get_learner_profile`, `get_next_lesson`, `submit_attempt`, `assess_attempt`, `get_progress_summary`, `update_learner_signal`, and `get_setup_status`.
 - `assess_attempt` persists idempotent assessment records, returns deterministic rubric scores, returns confidence output with explanation details, records missing evidence, marks assignments assessed, and updates the learner skill model with confidence dampening.
 - `get_next_lesson` can use the latest assessed assignment and stored assessment action to create the next active assignment through the lesson selector registry.
-- `get_next_lesson` resolves stored `branch` actions with `branch_id` through concept-level `branch_targets`, then curriculum-level `branch_fallbacks`, then explicit repeat fallback. The deterministic v1 scorer does not currently emit `branch`.
+- `get_next_lesson` resolves stored `branch` actions with `branch_id` through concept-level `branch_targets`, then curriculum-level `branch_fallbacks`, then explicit repeat fallback. The deterministic v1 scorer can emit a high-confidence `compiler_feedback_remediation` branch for repeated compiler failures.
 - `get_next_lesson` rotates deterministic unused prompt variants for the selected concept and difficulty before reusing the first matching variant.
 - `get_next_lesson` can abandon the active assignment when `abandon_active_assignment` is true and a non-empty `abandonment_reason` is supplied. `force_new_variant` is supported only with abandonment while an active assignment exists.
 - `get_next_lesson` returns an agent-owned `workspace_suggestion` with stable per-assignment relative paths. Normal lessons suggest a generated Cargo binary package and lesson file. Project-setup lessons such as `cargo new` suggest a directory to open without pre-creating a Cargo package.
@@ -45,14 +45,14 @@ Primary sources of truth:
 
 Use this order when continuing implementation:
 
-1. Implement richer adaptive-model gaps when ready: branch-emitting scoring, granular adaptive progress events, and richer concept graph metadata.
+1. Implement richer adaptive-model gaps when ready: problem-solving branch signal scoring and richer concept graph metadata.
 2. Add fuller agent/client examples around the workflow helper if a target MCP client needs setup-specific glue.
 3. Continue opportunistic validation and privacy hardening as new storage, report, or workflow surfaces are added.
 
 Important current behavior:
 
 - `start_session` creates the profile only after a valid `RustLevel` placement.
-- `get_next_lesson` creates an active assignment, reuses active assignments, abandons active assignments with a required reason, returns pending assessment after an attempt, and creates a post-assessment assignment from `repeat`, `simplify`, `continue`, `accelerate`, or a stored branch action. The deterministic v1 scorer currently emits only `repeat`, `simplify`, `continue`, and `accelerate`.
+- `get_next_lesson` creates an active assignment, reuses active assignments, abandons active assignments with a required reason, returns pending assessment after an attempt, and creates a post-assessment assignment from `repeat`, `simplify`, `continue`, `accelerate`, or `branch`. The deterministic v1 scorer currently emits `branch` only for high-confidence repeated compiler failures.
 - `get_next_lesson` includes `workspace_suggestion` for assignment responses. Pending-assessment responses have no assignment, no lesson plan, and no workspace suggestion.
 - Agent workflow helpers can prepare the suggested workspace, open the suggested path through a caller-provided opener such as VS Code, collect generated relative file paths and current lesson code into a `SubmitAttemptRequest`, and write the report after assessment. These helpers are not MCP tools and do not make the server control the editor.
 - Branch targets are configured in curriculum JSON with concept-level `branch_targets` and top-level `branch_fallbacks`. Target concept ids are validated when loading the curriculum.
@@ -189,7 +189,7 @@ Notes:
 - The project target is Python 3.11+. Do not lower `python_requires` only to satisfy an older local system Python.
 - If `python3 --version` shows `/usr/bin/python3` era Python `3.9.6`, source `~/.zshrc` or open a new shell before creating `.venv`.
 - Agents should run pip, setup diagnostics, tests, and coverage through `.venv/bin/python`; do not assume `python`, `pip`, or `pytest` are on the shell `PATH` or that the virtual environment is activated.
-- Latest known local verification: `237` tests passed under Python `3.14.5` in `.venv`; latest coverage passed with `94.19%`.
+- Latest known local verification: `239` tests passed under Python `3.14.5` in `.venv`; latest coverage passed with `94.34%`.
 - Real MCP SDK verification is no longer blocked locally after sourcing `~/.zshrc`, using Homebrew Python `3.14.5`, creating `.venv`, and installing `.[dev-mcp]`. `mcp==1.27.1` imported successfully, and FastMCP tests cover tools, resources, prompts, direct-parameter schemas, runtime tool flows, resource reads, prompt reads, and structured validation errors.
 - For learner Rust workspaces outside this server, allowed verification commands are limited by the AI Agent LLD to standard Cargo checks or lesson-provided commands.
 
