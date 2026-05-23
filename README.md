@@ -31,6 +31,7 @@ This repository contains design documentation and a local Python implementation 
 - `rust_sensei.agent_workspace.prepare_lesson_workspace` creates or reuses the suggested local lesson directory and starter Cargo files without overwriting learner code.
 - `rust_sensei.agent_report.write_lesson_report` writes a stable per-assignment Markdown report after assessment with the canonical Rust Sensei assessment embedded as JSON.
 - Adaptive lesson selection handlers live in `rust_sensei/domain/lesson_selection.py`, including branch target resolution and deterministic prompt variant rotation.
+- Curriculum seed loading validates the current reduced v1 shape, including nonblank required fields, known difficulty bands, unique concept order values, known rubric ids, valid branch target lists, workspace artifact policies, and lesson command metadata.
 - Assessment service implements `submit_attempt` and an initial `assess_attempt` flow with persisted idempotent assessment records, nonblank evidence validation, strict command metadata source/risk validation, artifact size limits, truncation-reason checks, and secret-bearing path rejection.
 - Deterministic rubric scoring, confidence measuring, and confidence explanations live in `rust_sensei/domain/scoring.py`.
 - Skill model updates with confidence dampening live in `rust_sensei/domain/skill_update.py`.
@@ -171,7 +172,7 @@ If `python3 --version` still shows the system Python `3.9.6`, run `source ~/.zsh
 
 Latest known verification:
 
-- `204` tests passed under Python `3.14.5` in `.venv`.
+- `226` tests passed under Python `3.14.5` in `.venv`.
 - Real FastMCP integration coverage passed with `mcp==1.27.1`.
 - Prior coverage passed at `93.30%`.
 

@@ -25,6 +25,7 @@ Primary sources of truth:
 - `get_next_lesson` rotates deterministic unused prompt variants for the selected concept and difficulty before reusing the first matching variant.
 - `get_next_lesson` can abandon the active assignment when `abandon_active_assignment` is true and a non-empty `abandonment_reason` is supplied. `force_new_variant` is supported only with abandonment while an active assignment exists.
 - `get_next_lesson` returns an agent-owned `workspace_suggestion` with stable per-assignment relative paths. Normal lessons suggest a generated Cargo binary package and lesson file. Project-setup lessons such as `cargo new` suggest a directory to open without pre-creating a Cargo package.
+- Curriculum seed loading validates the current reduced v1 shape, including nonblank required fields, known difficulty bands, unique concept order values, known rubric ids, valid branch target lists, workspace artifact policies, and lesson command metadata.
 - `rust_sensei.agent_workflow.prepare_agent_lesson` composes `get_next_lesson` responses with workspace preparation, supports caller-provided editor openers, and returns generated relative paths for attempt evidence.
 - `rust_sensei.agent_workflow.build_submit_attempt_request` builds `SubmitAttemptRequest` DTOs from prepared lesson workspaces, generated file paths, current lesson file contents, command evidence, and learner/agent notes.
 - `rust_sensei.agent_workflow.write_agent_lesson_report` writes report files from the prepared workspace, submitted attempt evidence, and canonical assessment output.
@@ -188,7 +189,7 @@ Notes:
 - The project target is Python 3.11+. Do not lower `python_requires` only to satisfy an older local system Python.
 - If `python3 --version` shows `/usr/bin/python3` era Python `3.9.6`, source `~/.zshrc` or open a new shell before creating `.venv`.
 - Agents should run pip, setup diagnostics, tests, and coverage through `.venv/bin/python`; do not assume `python`, `pip`, or `pytest` are on the shell `PATH` or that the virtual environment is activated.
-- Latest known local verification: `204` tests passed under Python `3.14.5` in `.venv`; prior coverage passed with `93.30%`.
+- Latest known local verification: `226` tests passed under Python `3.14.5` in `.venv`; prior coverage passed with `93.30%`.
 - Real MCP SDK verification is no longer blocked locally after sourcing `~/.zshrc`, using Homebrew Python `3.14.5`, creating `.venv`, and installing `.[dev-mcp]`. `mcp==1.27.1` imported successfully, and FastMCP tests cover tools, resources, prompts, direct-parameter schemas, runtime tool flows, resource reads, prompt reads, and structured validation errors.
 - For learner Rust workspaces outside this server, allowed verification commands are limited by the AI Agent LLD to standard Cargo checks or lesson-provided commands.
 

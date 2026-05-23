@@ -1,3 +1,5 @@
+from copy import deepcopy
+
 import pytest
 
 from rust_sensei.domain.curriculum import Curriculum
@@ -163,3 +165,137 @@ def test_curriculum_rejects_unknown_workspace_artifact_policy():
                 ],
             }
         )
+
+
+def test_curriculum_rejects_blank_required_text_fields():
+    data = _valid_curriculum()
+    data["concepts"][0]["variants"][0]["prompt"] = "   "
+
+    with pytest.raises(ValueError, match="prompt"):
+        Curriculum.from_dict(data)
+
+
+def test_curriculum_rejects_non_list_concepts():
+    data = _valid_curriculum()
+    data["concepts"] = {"concept_id": "variables"}
+
+    with pytest.raises(ValueError, match="concepts must be a list"):
+        Curriculum.from_dict(data)
+
+
+def test_curriculum_rejects_empty_concept_list():
+    data = _valid_curriculum()
+    data["concepts"] = []
+
+    with pytest.raises(ValueError, match="at least 1 concept"):
+        Curriculum.from_dict(data)
+
+
+def test_curriculum_rejects_duplicate_concept_order_values():
+    data = _valid_curriculum()
+    other = deepcopy(data["concepts"][0])
+    other["concept_id"] = "ownership"
+    other["title"] = "Ownership"
+    other["variants"][0]["variant_id"] = "intro_002"
+    data["concepts"].append(other)
+
+    with pytest.raises(ValueError, match="Duplicate concept order"):
+        Curriculum.from_dict(data)
+
+
+@pytest.mark.parametrize(
+    ("field_path", "value"),
+    [
+        (("concepts", 0, "default_difficulty"), "unknown"),
+        (("concepts", 0, "variants", 0, "difficulty"), "unknown"),
+    ],
+)
+def test_curriculum_rejects_unknown_difficulty_values(field_path, value):
+    data = _valid_curriculum()
+    target = data
+    for key in field_path[:-1]:
+        target = target[key]
+    target[field_path[-1]] = value
+
+    with pytest.raises(ValueError, match="invalid .*difficulty"):
+        Curriculum.from_dict(data)
+
+
+@pytest.mark.parametrize(
+    ("field_path", "value"),
+    [
+        (("concepts", 0, "rubric_ids"), []),
+        (("concepts", 0, "variants", 0, "success_criteria"), []),
+        (("concepts", 0, "variants", 0, "hints"), [""]),
+    ],
+)
+def test_curriculum_rejects_invalid_string_lists(field_path, value):
+    data = _valid_curriculum()
+    target = data
+    for key in field_path[:-1]:
+        target = target[key]
+    target[field_path[-1]] = value
+
+    with pytest.raises(ValueError):
+        Curriculum.from_dict(data)
+
+
+@pytest.mark.parametrize(
+    "branch_targets",
+    [
+        {"": ["variables"]},
+        {"branch": "variables"},
+        {"branch": []},
+        {"branch": [""]},
+    ],
+)
+def test_curriculum_rejects_malformed_branch_targets(branch_targets):
+    data = _valid_curriculum()
+    data["concepts"][0]["branch_targets"] = branch_targets
+
+    with pytest.raises(ValueError):
+        Curriculum.from_dict(data)
+
+
+def test_curriculum_rejects_invalid_lesson_command_shape():
+    data = _valid_curriculum()
+    data["concepts"][0]["variants"][0]["lesson_commands"][0]["required"] = "true"
+
+    with pytest.raises(ValueError, match="required"):
+        Curriculum.from_dict(data)
+
+
+def _valid_curriculum():
+    return {
+        "curriculum_version": "test",
+        "branch_fallbacks": {"global_branch": ["variables"]},
+        "concepts": [
+            {
+                "concept_id": "variables",
+                "title": "Variables",
+                "order": 1,
+                "default_difficulty": "intro",
+                "learner_command": "cargo run",
+                "rubric_ids": ["rust_correctness"],
+                "branch_targets": {"local_branch": ["variables"]},
+                "variants": [
+                    {
+                        "variant_id": "intro_001",
+                        "difficulty": "intro",
+                        "prompt": "Intro",
+                        "success_criteria": ["Compiles"],
+                        "hints": ["Run cargo run"],
+                        "lesson_commands": [
+                            {
+                                "command": "cargo run",
+                                "purpose": "Run the program",
+                                "risk_level": "low",
+                                "required": True,
+                                "allowed_for_agent_verification": True,
+                            }
+                        ],
+                    }
+                ],
+            }
+        ],
+    }
