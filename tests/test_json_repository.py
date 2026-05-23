@@ -878,6 +878,21 @@ def test_curriculum_repository_rejects_invalid_curriculum(tmp_path):
         repository.get_curriculum()
 
 
+def test_curriculum_repository_wraps_missing_custom_curriculum_path(tmp_path):
+    curriculum_path = tmp_path / "missing_curriculum.json"
+    repository = JsonRepositoryFactory(
+        tmp_path,
+        curriculum_path=curriculum_path,
+    ).curriculum_repository()
+
+    with pytest.raises(StorageError) as error:
+        repository.get_curriculum()
+
+    assert error.value.envelope.message == "Curriculum seed data could not be read"
+    assert error.value.envelope.retryable is False
+    assert error.value.envelope.details["path"] == str(curriculum_path)
+
+
 def test_curriculum_repository_loads_packaged_seed(tmp_path):
     repository = JsonRepositoryFactory(tmp_path).curriculum_repository()
 

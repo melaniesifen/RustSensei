@@ -115,6 +115,24 @@ def test_registered_resources_return_structured_service_errors(tmp_path):
     assert response["error"]["retryable"] is False
 
 
+def test_curriculum_resource_wraps_unreadable_custom_curriculum(tmp_path):
+    mcp = _FakeMCP()
+    register_handlers(
+        mcp,
+        ServiceFactory(
+            state_dir=tmp_path,
+            curriculum_path=tmp_path / "missing_curriculum.json",
+        ),
+    )
+
+    response = mcp.resources[MCP_CURRICULUM_CONCEPTS_RESOURCE_URI]()
+
+    assert response["error"]["error_code"] == "storage_error"
+    assert response["error"]["message"] == "Curriculum seed data could not be read"
+    assert response["error"]["retryable"] is False
+    assert response["error"]["details"]["path"].endswith("missing_curriculum.json")
+
+
 def test_registered_resources_return_json_payloads(tmp_path):
     mcp = _FakeMCP()
     register_handlers(mcp, ServiceFactory(state_dir=tmp_path))

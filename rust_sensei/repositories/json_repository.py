@@ -379,6 +379,12 @@ class JsonCurriculumRepository:
     def get_curriculum(self) -> Curriculum:
         try:
             return Curriculum.from_dict(self._load_curriculum_data())
+        except OSError as exc:
+            raise storage_error(
+                "Curriculum seed data could not be read",
+                retryable=False,
+                path=self._curriculum_source_label(),
+            ) from exc
         except (KeyError, TypeError, ValueError, json.JSONDecodeError) as exc:
             raise storage_error(
                 "Curriculum seed data is invalid",

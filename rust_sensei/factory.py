@@ -18,12 +18,16 @@ class ServiceFactory:
     def __init__(
         self,
         state_dir: Path | None = None,
+        curriculum_path: Path | None = None,
         now: Callable[[], datetime] | None = None,
     ) -> None:
         self._state_dir = state_dir or default_state_dir()
         self._now = now or self._utc_now
         configure_logging(self._state_dir)
-        self._repositories = JsonRepositoryFactory(self._state_dir)
+        self._repositories = JsonRepositoryFactory(
+            self._state_dir,
+            curriculum_path=curriculum_path,
+        )
 
     def session_service(self) -> SessionService:
         return SessionService(
