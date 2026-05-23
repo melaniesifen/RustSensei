@@ -27,10 +27,10 @@ Primary sources of truth:
 - `get_next_lesson` returns an agent-owned `workspace_suggestion` with stable per-assignment relative paths. Normal lessons suggest a generated Cargo binary package and lesson file. Project-setup lessons such as `cargo new` suggest a directory to open without pre-creating a Cargo package.
 - Curriculum seed loading validates the current reduced v1 shape, including nonblank required fields, known difficulty bands, unique concept order values, known rubric ids, valid branch target lists, workspace artifact policies, and lesson command metadata.
 - `rust_sensei.agent_workflow.prepare_agent_lesson` composes `get_next_lesson` responses with workspace preparation, supports caller-provided editor openers, and returns generated relative paths for attempt evidence.
-- `rust_sensei.agent_workflow.build_submit_attempt_request` builds `SubmitAttemptRequest` DTOs from prepared lesson workspaces, generated file paths, current lesson file contents, command evidence, and learner/agent notes.
+- `rust_sensei.agent_workflow.build_submit_attempt_request` builds `SubmitAttemptRequest` DTOs from prepared lesson workspaces, generated file paths, current lesson file contents, command evidence, and learner/agent notes. It omits absolute `workspace_root` by default unless local diagnostics explicitly opt in.
 - `rust_sensei.agent_workflow.write_agent_lesson_report` writes report files from the prepared workspace, submitted attempt evidence, and canonical assessment output.
 - `rust_sensei.agent_workspace.prepare_lesson_workspace` creates or reuses suggested lesson directories and starter Cargo files without overwriting learner code. Opening VS Code remains an agent/client action.
-- `rust_sensei.agent_report.write_lesson_report` writes a stable per-assignment `report.md` after assessment. The report includes assignment details, submitted artifacts, command lists, a readable assessment summary, and the canonical Rust Sensei assessment DTO as JSON.
+- `rust_sensei.agent_report.write_lesson_report` writes a stable per-assignment `report.md` after assessment. The report includes assignment details, submitted artifacts, command lists, a readable assessment summary, and the canonical Rust Sensei assessment DTO as JSON. Human-readable report sections redact obvious local absolute path fragments while preserving canonical assessment JSON.
 - Progress events are persisted for assignment creation/viewing, attempt submission, assessment, and assignment abandonment. Lifecycle events for creation, attempt submission, assessment, and abandonment are written in the same JSON transaction as the canonical state change.
 - `get_progress_summary` returns completed/repeated/skipped concepts, recent events, recommended focus, and trend.
 - `update_learner_signal` records non-code learner signals such as confusion, confidence, blockers, pacing, boredom, too-easy, and too-hard feedback.
@@ -45,9 +45,9 @@ Primary sources of truth:
 
 Use this order when continuing implementation:
 
-1. Continue hardening validation, privacy limits, and current reduced-shape curriculum validation.
-2. Implement richer adaptive-model gaps when ready: branch-emitting scoring, placement skip events, granular adaptive progress events, and richer concept graph metadata.
-3. Add fuller agent/client examples around the workflow helper if a target MCP client needs setup-specific glue.
+1. Implement richer adaptive-model gaps when ready: branch-emitting scoring, placement skip events, granular adaptive progress events, and richer concept graph metadata.
+2. Add fuller agent/client examples around the workflow helper if a target MCP client needs setup-specific glue.
+3. Continue opportunistic validation and privacy hardening as new storage, report, or workflow surfaces are added.
 
 Important current behavior:
 
@@ -189,7 +189,7 @@ Notes:
 - The project target is Python 3.11+. Do not lower `python_requires` only to satisfy an older local system Python.
 - If `python3 --version` shows `/usr/bin/python3` era Python `3.9.6`, source `~/.zshrc` or open a new shell before creating `.venv`.
 - Agents should run pip, setup diagnostics, tests, and coverage through `.venv/bin/python`; do not assume `python`, `pip`, or `pytest` are on the shell `PATH` or that the virtual environment is activated.
-- Latest known local verification: `226` tests passed under Python `3.14.5` in `.venv`; prior coverage passed with `93.30%`.
+- Latest known local verification: `229` tests passed under Python `3.14.5` in `.venv`; prior coverage passed with `93.30%`.
 - Real MCP SDK verification is no longer blocked locally after sourcing `~/.zshrc`, using Homebrew Python `3.14.5`, creating `.venv`, and installing `.[dev-mcp]`. `mcp==1.27.1` imported successfully, and FastMCP tests cover tools, resources, prompts, direct-parameter schemas, runtime tool flows, resource reads, prompt reads, and structured validation errors.
 - For learner Rust workspaces outside this server, allowed verification commands are limited by the AI Agent LLD to standard Cargo checks or lesson-provided commands.
 

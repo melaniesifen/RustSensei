@@ -67,7 +67,7 @@ def test_prepare_agent_lesson_opens_generated_lesson_and_builds_attempt(tmp_path
         "rust-sensei-lessons/assign_000001/src/main.rs",
     )
     assert attempt.assignment_id == ASSIGNMENT_ID_1
-    assert attempt.workspace_root == str(tmp_path)
+    assert attempt.workspace_root is None
     assert attempt.file_paths == ["rust-sensei-lessons/assign_000001/src/main.rs"]
     assert 'println!("Hello, Rust Sensei!")' in attempt.code
     assert attempt.commands_run_by_learner == ["cargo run"]
@@ -142,6 +142,20 @@ def test_prepare_agent_lesson_for_manual_project_opens_directory_without_generat
     assert attempt.workspace_root is None
     assert attempt.file_paths == []
     assert attempt.code == "fn main() {}\n"
+
+
+def test_build_submit_attempt_request_can_include_workspace_root_for_local_diagnostics(
+    tmp_path,
+):
+    prepared = prepare_agent_lesson(_lesson_response(), tmp_path)
+
+    attempt = build_submit_attempt_request(
+        prepared,
+        code="fn main() {}\n",
+        include_workspace_root=True,
+    )
+
+    assert attempt.workspace_root == str(tmp_path.resolve(strict=False))
 
 
 def test_prepare_agent_lesson_rejects_pending_assessment_response(tmp_path):

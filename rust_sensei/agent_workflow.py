@@ -79,7 +79,7 @@ def build_submit_attempt_request(
     *,
     client_request_id: str | None = None,
     client_request_fingerprint: str | None = None,
-    include_workspace_root: bool = True,
+    include_workspace_root: bool = False,
     code: str | None = None,
     read_lesson_file: bool = True,
     extra_file_paths: Sequence[Path] = (),

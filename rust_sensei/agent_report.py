@@ -2,12 +2,19 @@ from __future__ import annotations
 
 import json
 import os
+import re
 import tempfile
 from collections.abc import Sequence
 from pathlib import Path
 
 from rust_sensei.dto.assessment import AssessmentResultDTO
 from rust_sensei.dto.lesson import LessonAssignmentDTO, LessonPlanDTO
+
+_POSIX_LOCAL_PATH_RE = re.compile(r"/(?:Users|home)/[^\s`\"'<>),;]+")
+_WINDOWS_LOCAL_PATH_RE = re.compile(
+    r"[A-Za-z]:\\Users\\[^\s`\"'<>),;]+",
+    flags=re.IGNORECASE,
+)
 
 
 def build_lesson_report(
@@ -237,7 +244,7 @@ def _escape_table_cell(value: str) -> str:
 
 
 def _inline_markdown(value: str) -> str:
-    normalized = " ".join(str(value).splitlines()).strip()
+    normalized = _redact_local_paths(" ".join(str(value).splitlines()).strip())
     return (
         normalized
         .replace("\\", "\\\\")
@@ -252,7 +259,43 @@ def _inline_markdown(value: str) -> str:
 
 
 def _fenced_text(value: str) -> str:
-    return "```text\n" + value.replace("```", "`\u200b``") + "\n```"
+    redacted = _redact_local_paths(value)
+    return "```text\n" + redacted.replace("```", "`\u200b``") + "\n```"
+
+
+def _redact_local_paths(value: str) -> str:
+    value = _POSIX_LOCAL_PATH_RE.sub(_redacted_posix_path, value)
+    return _WINDOWS_LOCAL_PATH_RE.sub(_redacted_windows_path, value)
+
+
+def _redacted_posix_path(match: re.Match[str]) -> str:
+    return _redacted_path(match.group(0), separator="/")
+
+
+def _redacted_windows_path(match: re.Match[str]) -> str:
+    return _redacted_path(match.group(0), separator="\\")
+
+
+def _redacted_path(path: str, *, separator: str) -> str:
+    stripped = path.rstrip(separator)
+    parts = [part for part in stripped.split(separator) if part]
+    if not parts or _is_bare_home_path(parts, separator):
+        return "<local-path>"
+    basename = parts[-1]
+    return f"<local-path>{separator}{basename}"
+
+
+def _is_bare_home_path(parts: list[str], separator: str) -> bool:
+    if separator == "/":
+        return len(parts) <= 2 and parts[0] in {"Users", "home"}
+    if separator == "\\":
+        return (
+            len(parts) <= 3
+            and len(parts[0]) == 2
+            and parts[0][1] == ":"
+            and parts[1].lower() == "users"
+        )
+    return False
 
 
 def _atomic_write_text(path: Path, content: str) -> None:

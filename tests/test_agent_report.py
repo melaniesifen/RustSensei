@@ -210,6 +210,77 @@ def test_build_lesson_report_fences_multiline_agent_guidance():
     assert "`\u200b``json" in guidance_section
 
 
+def test_build_lesson_report_redacts_local_absolute_paths_in_display_sections():
+    report = build_lesson_report(
+        assignment=_assignment(),
+        lesson_plan=_lesson_plan(
+            prompt="Open /Users/mel/private-workspace/src/main.rs and inspect it."
+        ),
+        assessment=_assessment(
+            feedback_summary=(
+                "Checked /Users/mel/private-workspace/src/main.rs successfully."
+            )
+        ),
+        lesson_file_path="/Users/mel/private-workspace/src/main.rs",
+        submitted_file_paths=[
+            "/Users/mel/private-workspace/src/main.rs",
+            r"C:\Users\mel\private-workspace\src\lib.rs",
+        ],
+        commands_run_by_learner=[
+            "cargo run --manifest-path /Users/mel/private-workspace/Cargo.toml"
+        ],
+        agent_guidance=r"See C:\Users\mel\private-workspace\notes.md",
+    )
+
+    display_report = report.split("## Canonical Rust Sensei Assessment JSON", 1)[0]
+    assert "/Users/mel" not in display_report
+    assert r"C:\Users\mel" not in display_report
+    assert "<local-path>/main.rs" in display_report
+    assert "<local-path>/Cargo.toml" in display_report
+    guidance_section = report.split("## Optional Agent Guidance", 1)[1]
+    assert r"C:\Users\mel" not in guidance_section
+    assert r"<local-path>\notes.md" in guidance_section
+    assert _assessment_json_from_report(report) == _assessment(
+        feedback_summary="Checked /Users/mel/private-workspace/src/main.rs successfully."
+    ).model_dump(mode="json")
+
+
+def test_build_lesson_report_redacts_bare_home_paths_without_username():
+    report = build_lesson_report(
+        assignment=_assignment(),
+        lesson_plan=_lesson_plan(
+            prompt=(
+                "Open /Users/mel, /Users/mel/, /home/mel, "
+                r"C:\Users\mel, and C:\Users\mel\\"
+            )
+        ),
+        assessment=_assessment(
+            feedback_summary=(
+                "Checked /Users/mel and "
+                r"C:\Users\mel while preserving /Users/mel/project/src/main.rs."
+            )
+        ),
+        lesson_file_path="/Users/mel",
+        submitted_file_paths=[
+            "/Users/mel/",
+            "/home/mel",
+            r"C:\Users\mel",
+            r"C:\Users\mel\\",
+            "/Users/mel/project/src/main.rs",
+        ],
+        commands_run_by_learner=["pwd -> /Users/mel"],
+        agent_guidance=r"Home was C:\Users\mel",
+    )
+
+    display_report = report.split("## Canonical Rust Sensei Assessment JSON", 1)[0]
+    assert "/Users/mel" not in display_report
+    assert "/home/mel" not in display_report
+    assert r"C:\Users\mel" not in display_report
+    assert "<local-path>/mel" not in display_report
+    assert r"<local-path>\mel" not in display_report
+    assert "<local-path>/main.rs" in display_report
+
+
 def test_write_lesson_report_preserves_existing_report_when_replace_fails(
     tmp_path,
     monkeypatch,
