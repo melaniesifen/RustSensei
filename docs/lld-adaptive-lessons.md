@@ -24,11 +24,11 @@ Primary requirement links:
 - `AL-FR-05`: Future richer concept specs should define struggle signals.
 - `AL-FR-06`: Lesson selection must use learner profile, recent assessments, and confidence.
 - `AL-FR-07`: Lesson selection must support `simplify`, `repeat`, `continue`, `accelerate`, and stored `branch` actions. The current deterministic scorer does not emit `branch`.
-- `AL-FR-08`: Future placement handling should record provisional skips for earlier concepts when a learner starts as `proficient` or `expert`. Current v1 starts the learner at the placement concept but does not emit placement-skip events.
+- `AL-FR-08`: Placement handling records provisional skips for earlier concepts when a learner starts as `proficient` or `expert`.
 - `AL-FR-09`: Demonstrated mastery may mark a concept complete without assigning all practice variants.
 - `AL-FR-10`: The system must record why a lesson was selected.
 - `AL-FR-11`: The system must persist assignment history and use it during adaptation.
-- `AL-FR-12`: Placement skips should be represented as provisional skips, not completed concepts, once placement-skip event recording is implemented.
+- `AL-FR-12`: Placement skips are represented as provisional skips, not completed concepts.
 
 ## 3. Non-Functional Requirements
 
@@ -301,7 +301,7 @@ Placement skip behavior:
 - Target behavior: confirming a skip creates a `skip_confirmed` progress event.
 - Target behavior: later assessment evidence may confirm the skip or reopen the concept.
 - Target behavior: reopening a skipped concept creates a `reopened` progress event.
-- Current v1 behavior: `start_session` sets the active starting concept from placement and does not emit provisional skip events.
+- Current v1 behavior: `start_session` records `provisionally_skipped` progress events in the same JSON transaction as profile creation when `proficient` or `expert` placement starts beyond earlier concepts.
 
 ### 4.6 Next-Step Rule Set
 

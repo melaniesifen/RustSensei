@@ -702,15 +702,21 @@ class LearnerSignal:
 ### 4.6 Repository Interfaces
 
 ```python
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from typing import Protocol
+
+from rust_sensei.domain.progress import ProgressEvent
 
 
 class LearnerRepository(Protocol):
     def get_active_profile(self) -> LearnerProfile | None: ...
     def get_profile(self, learner_id: str) -> LearnerProfile | None: ...
     def save_profile(self, profile: LearnerProfile) -> None: ...
-    def create_profile_if_absent(self, profile: LearnerProfile) -> LearnerProfile: ...
+    def create_profile_if_absent(
+        self,
+        profile: LearnerProfile,
+        event_factory: Callable[[LearnerProfile], Iterable[ProgressEvent]] | None = None,
+    ) -> LearnerProfile: ...
 
 
 class AssignmentRepository(Protocol):

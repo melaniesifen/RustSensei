@@ -36,6 +36,7 @@ This repository contains design documentation and a local Python implementation 
 - Deterministic rubric scoring, confidence measuring, and confidence explanations live in `rust_sensei/domain/scoring.py`.
 - Skill model updates with confidence dampening live in `rust_sensei/domain/skill_update.py`.
 - Append-only progress events are stored for assignment creation/viewing, attempt submission, assessment, and assignment abandonment. Lifecycle events for creation, attempt submission, assessment, and abandonment are written in the same JSON transaction as the canonical state change.
+- `start_session` records `provisionally_skipped` progress events in the same JSON transaction as profile creation when `proficient` or `expert` placement starts the learner beyond earlier concepts.
 - Progress service implements `get_progress_summary` with completed/repeated/skipped concepts, recent events, recommended focus, and trend.
 - Setup service for Python, rustc, Cargo, and state directory diagnostics.
 - CLI diagnostics include `setup-status` JSON output and `doctor` human or JSON output.
@@ -172,15 +173,15 @@ If `python3 --version` still shows the system Python `3.9.6`, run `source ~/.zsh
 
 Latest known verification:
 
-- `229` tests passed under Python `3.14.5` in `.venv`.
+- `233` tests passed under Python `3.14.5` in `.venv`.
 - Real FastMCP integration coverage passed with `mcp==1.27.1`.
-- Prior coverage passed at `93.30%`.
+- Latest coverage passed at `94.12%`.
 
 ## Next Work
 
 Recommended implementation order:
 
-1. Implement richer adaptive-model gaps when ready: branch-emitting scoring, placement skip events, granular adaptive progress events, and richer concept graph metadata.
+1. Implement richer adaptive-model gaps when ready: branch-emitting scoring, granular adaptive progress events, and richer concept graph metadata.
 2. Add fuller agent/client examples around the new workflow helper if a target MCP client needs setup-specific glue.
 3. Continue opportunistic validation and privacy hardening as new storage, report, or workflow surfaces are added.
 
