@@ -415,7 +415,7 @@ Default v1 completion rules:
 - A completed concept can be reopened if later evidence shows a required rubric dimension below `0.50` with confidence at least `0.60`.
 - Reopened concepts return through the normal selection handler registry.
 
-Target behavior: completion emits a `completed` progress event and reopening emits a `reopened` progress event. Current v1 writes an `assessed` event with `next_action` details, but it does not yet emit separate completed/repeated/simplified/accelerated/branched/reopened events during assessment.
+Current v1 writes the canonical `assessed` event plus one adaptive outcome event during the same assessment transaction: `completed`, `repeated`, `simplified`, `accelerated`, or `branched`. Reopening remains target behavior and should emit a `reopened` progress event when implemented.
 
 ### 4.8 Assignment History And Prompt Variants
 

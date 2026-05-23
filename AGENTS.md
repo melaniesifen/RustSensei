@@ -31,7 +31,7 @@ Primary sources of truth:
 - `rust_sensei.agent_workflow.write_agent_lesson_report` writes report files from the prepared workspace, submitted attempt evidence, and canonical assessment output.
 - `rust_sensei.agent_workspace.prepare_lesson_workspace` creates or reuses suggested lesson directories and starter Cargo files without overwriting learner code. Opening VS Code remains an agent/client action.
 - `rust_sensei.agent_report.write_lesson_report` writes a stable per-assignment `report.md` after assessment. The report includes assignment details, submitted artifacts, command lists, a readable assessment summary, and the canonical Rust Sensei assessment DTO as JSON. Human-readable report sections redact obvious local absolute path fragments while preserving canonical assessment JSON.
-- Progress events are persisted for placement skips, assignment creation/viewing, attempt submission, assessment, and assignment abandonment. Lifecycle events for profile creation with placement skips, assignment creation, attempt submission, assessment, and abandonment are written in the same JSON transaction as the canonical state change.
+- Progress events are persisted for placement skips, assignment creation/viewing, attempt submission, assessment, adaptive assessment outcomes, and assignment abandonment. Lifecycle events for profile creation with placement skips, assignment creation, attempt submission, assessment with its adaptive outcome, and abandonment are written in the same JSON transaction as the canonical state change.
 - `get_progress_summary` returns completed/repeated/skipped concepts, recent events, recommended focus, and trend.
 - `update_learner_signal` records non-code learner signals such as confusion, confidence, blockers, pacing, boredom, too-easy, and too-hard feedback.
 - CLI diagnostics include `setup-status` for JSON setup output and `doctor` for human or JSON local setup checks.
@@ -58,7 +58,7 @@ Important current behavior:
 - Branch targets are configured in curriculum JSON with concept-level `branch_targets` and top-level `branch_fallbacks`. Target concept ids are validated when loading the curriculum.
 - The implemented curriculum model is the reduced v1 shape: concept id, title, order, default difficulty, learner command, rubric ids, variants, and branch targets. Rich graph metadata such as prerequisites, competency goals, stretch/struggle signals, next concepts, and completion thresholds is design target work, not current code.
 - Placement selects the active starting concept and records `provisionally_skipped` events for earlier concepts when a learner starts as `proficient` or `expert`.
-- Assessment currently writes one `assessed` progress event with `next_action` details; it does not yet emit separate completed/repeated/simplified/accelerated/branched events.
+- Assessment writes the canonical `assessed` progress event plus one adaptive outcome event derived from `next_action`: `completed`, `repeated`, `simplified`, `accelerated`, or `branched`.
 - Variant rotation uses prior assignments for the learner and selects the first unused variant for the target concept and difficulty. When all matching variants were used, it falls back to the first matching variant.
 - `submit_attempt` validates nonblank evidence, rejects invalid command metadata source/risk values through DTO validation, enforces artifact size limits and truncation reasons, rejects obvious secret-bearing file paths, saves attempts atomically with assignment status updates, and handles idempotent `client_request_id` retries inside the JSON lock.
 - `assess_attempt` validates attempt readiness, creates one assessment per attempt, handles repeat calls without changing state, uses deterministic scoring from `domain/scoring.py`, and applies confidence-dampened skill updates from `domain/skill_update.py`.
@@ -189,7 +189,7 @@ Notes:
 - The project target is Python 3.11+. Do not lower `python_requires` only to satisfy an older local system Python.
 - If `python3 --version` shows `/usr/bin/python3` era Python `3.9.6`, source `~/.zshrc` or open a new shell before creating `.venv`.
 - Agents should run pip, setup diagnostics, tests, and coverage through `.venv/bin/python`; do not assume `python`, `pip`, or `pytest` are on the shell `PATH` or that the virtual environment is activated.
-- Latest known local verification: `235` tests passed under Python `3.14.5` in `.venv`; latest coverage passed with `94.21%`.
+- Latest known local verification: `237` tests passed under Python `3.14.5` in `.venv`; latest coverage passed with `94.19%`.
 - Real MCP SDK verification is no longer blocked locally after sourcing `~/.zshrc`, using Homebrew Python `3.14.5`, creating `.venv`, and installing `.[dev-mcp]`. `mcp==1.27.1` imported successfully, and FastMCP tests cover tools, resources, prompts, direct-parameter schemas, runtime tool flows, resource reads, prompt reads, and structured validation errors.
 - For learner Rust workspaces outside this server, allowed verification commands are limited by the AI Agent LLD to standard Cargo checks or lesson-provided commands.
 

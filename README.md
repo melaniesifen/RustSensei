@@ -35,7 +35,7 @@ This repository contains design documentation and a local Python implementation 
 - Assessment service implements `submit_attempt` and an initial `assess_attempt` flow with persisted idempotent assessment records, nonblank evidence validation, strict command metadata source/risk validation, artifact size limits, truncation-reason checks, and secret-bearing path rejection.
 - Deterministic rubric scoring, confidence measuring, and confidence explanations live in `rust_sensei/domain/scoring.py`.
 - Skill model updates with confidence dampening live in `rust_sensei/domain/skill_update.py`.
-- Append-only progress events are stored for assignment creation/viewing, attempt submission, assessment, and assignment abandonment. Lifecycle events for creation, attempt submission, assessment, and abandonment are written in the same JSON transaction as the canonical state change.
+- Append-only progress events are stored for assignment creation/viewing, attempt submission, assessment, adaptive assessment outcomes, and assignment abandonment. Lifecycle events for creation, attempt submission, assessment, adaptive outcomes, and abandonment are written in the same JSON transaction as the canonical state change.
 - `start_session` records `provisionally_skipped` progress events in the same JSON transaction as profile creation when `proficient` or `expert` placement starts the learner beyond earlier concepts.
 - Progress service implements `get_progress_summary` with completed/repeated/skipped concepts, recent events, recommended focus, and trend.
 - Setup service for Python, rustc, Cargo, and state directory diagnostics.
@@ -173,9 +173,9 @@ If `python3 --version` still shows the system Python `3.9.6`, run `source ~/.zsh
 
 Latest known verification:
 
-- `235` tests passed under Python `3.14.5` in `.venv`.
+- `237` tests passed under Python `3.14.5` in `.venv`.
 - Real FastMCP integration coverage passed with `mcp==1.27.1`.
-- Latest coverage passed at `94.21%`.
+- Latest coverage passed at `94.19%`.
 
 ## Next Work
 

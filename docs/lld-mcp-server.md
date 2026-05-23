@@ -757,14 +757,20 @@ class AssessmentRepository(Protocol):
         self,
         result: AssessmentResult,
         assignment: LessonAssignment,
-        event_factory: Callable[[AssessmentResult], ProgressEvent] | None = None,
+        event_factory: Callable[
+            [AssessmentResult],
+            ProgressEvent | Iterable[ProgressEvent],
+        ] | None = None,
     ) -> tuple[AssessmentResult, bool]: ...
     def save_assessment_for_assignment_and_profile(
         self,
         result: AssessmentResult,
         assignment: LessonAssignment,
         profile_updater: Callable[[AssessmentResult, LearnerProfile], LearnerProfile],
-        event_factory: Callable[[AssessmentResult], ProgressEvent] | None = None,
+        event_factory: Callable[
+            [AssessmentResult],
+            ProgressEvent | Iterable[ProgressEvent],
+        ] | None = None,
     ) -> tuple[AssessmentResult, bool]: ...
     def get_assessment_by_attempt_id(self, attempt_id: str) -> AssessmentResult | None: ...
     def get_latest_assessment_for_assignment(self, assignment_id: str) -> AssessmentResult | None: ...
