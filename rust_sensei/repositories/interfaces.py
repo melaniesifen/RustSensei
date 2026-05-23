@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from typing import Protocol
 
 from rust_sensei.domain.assessment import AssessmentResult
@@ -22,7 +22,13 @@ class LearnerRepository(Protocol):
     def save_profile(self, profile: LearnerProfile) -> None:
         ...
 
-    def create_profile_if_absent(self, profile: LearnerProfile) -> LearnerProfile:
+    def create_profile_if_absent(
+        self,
+        profile: LearnerProfile,
+        event_factory: (
+            Callable[[LearnerProfile], Iterable[ProgressEvent]] | None
+        ) = None,
+    ) -> LearnerProfile:
         ...
 
 

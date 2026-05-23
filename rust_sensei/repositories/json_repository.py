@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 import json
-from collections.abc import Callable
+from collections.abc import Callable, Iterable
 from dataclasses import replace
 from datetime import datetime, timezone
 from importlib import resources
@@ -51,13 +51,24 @@ class JsonLearnerRepository:
 
         self._store.update(mutation)
 
-    def create_profile_if_absent(self, profile: LearnerProfile) -> LearnerProfile:
+    def create_profile_if_absent(
+        self,
+        profile: LearnerProfile,
+        event_factory: (
+            Callable[[LearnerProfile], Iterable[ProgressEvent]] | None
+        ) = None,
+    ) -> LearnerProfile:
         def transaction(state: dict[str, Any]) -> tuple[LearnerProfile, bool]:
-            existing = self._profile_from_state(state["learners"].get(profile.learner_id))
+            existing = self._profile_from_state(
+                state["learners"].get(profile.learner_id)
+            )
             if existing is not None:
                 return existing, False
 
             state["learners"][profile.learner_id] = self._profile_to_state(profile)
+            if event_factory is not None:
+                for event in event_factory(profile):
+                    _append_progress_event(state, event)
             return profile, True
 
         return self._store.transact(transaction)

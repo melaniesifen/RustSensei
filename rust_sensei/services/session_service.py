@@ -5,8 +5,11 @@ from collections.abc import Callable
 from datetime import datetime
 
 from rust_sensei.constants import ACTIVE_LEARNER_ID, ALLOWED_RUST_LEVELS
+from rust_sensei.domain.curriculum import Curriculum
+from rust_sensei.domain.enums import RustLevel
 from rust_sensei.domain.learner import LearnerProfile
 from rust_sensei.domain.placement import starting_concept_for_level
+from rust_sensei.domain.progress import ProgressEvent, ProgressEventType
 from rust_sensei.domain.signal import LearnerSignal
 from rust_sensei.domain.skill import SkillModel
 from rust_sensei.dto.mappers import learner_profile_to_dto, skill_model_to_dto
@@ -20,11 +23,13 @@ from rust_sensei.dto.session import (
 )
 from rust_sensei.errors import not_found_error, validation_error
 from rust_sensei.repositories.interfaces import (
+    CurriculumRepository,
     LearnerRepository,
     LearnerSignalRepository,
 )
 
 LOGGER = logging.getLogger(__name__)
+PLACEMENT_SKIP_LEVELS = {RustLevel.PROFICIENT, RustLevel.EXPERT}
 
 
 class SessionService:
@@ -32,10 +37,12 @@ class SessionService:
         self,
         learner_repository: LearnerRepository,
         learner_signal_repository: LearnerSignalRepository,
+        curriculum_repository: CurriculumRepository,
         now: Callable[[], datetime],
     ) -> None:
         self._learner_repository = learner_repository
         self._learner_signal_repository = learner_signal_repository
+        self._curriculum_repository = curriculum_repository
         self._now = now
 
     def start_session(self, request: StartSessionRequest) -> StartSessionResponse:
@@ -60,7 +67,8 @@ class SessionService:
             )
 
         created = self._learner_repository.create_profile_if_absent(
-            self._create_profile(request)
+            self._create_profile(request),
+            event_factory=self._placement_skip_events,
         )
         LOGGER.info(
             "Started learner session learner_id=%s rust_level_initial=%s",
@@ -132,6 +140,39 @@ class SessionService:
             recorded=True,
         )
 
+    def _placement_skip_events(self, profile: LearnerProfile) -> list[ProgressEvent]:
+        if (
+            profile.rust_level_initial not in PLACEMENT_SKIP_LEVELS
+            or profile.active_concept_id is None
+        ):
+            return []
+
+        curriculum = self._curriculum_repository.get_curriculum()
+        skipped_concept_ids = _concept_ids_before_active_concept(
+            curriculum,
+            profile.active_concept_id,
+        )
+        return [
+            ProgressEvent(
+                event_id="",
+                learner_id=profile.learner_id,
+                event_type=ProgressEventType.PROVISIONALLY_SKIPPED,
+                assignment_id=None,
+                attempt_id=None,
+                assessment_id=None,
+                details={
+                    "concept_id": concept_id,
+                    "placement_level": profile.rust_level_initial.value,
+                    "active_concept_id": profile.active_concept_id,
+                    "reason": "initial_placement",
+                },
+                previous_status=None,
+                new_status="provisionally_skipped",
+                created_at=profile.created_at,
+            )
+            for concept_id in skipped_concept_ids
+        ]
+
     def _create_profile(self, request: StartSessionRequest) -> LearnerProfile:
         if request.initial_rust_level is None:
             raise validation_error("initial_rust_level is required")
@@ -154,3 +195,20 @@ class SessionService:
                 learner_id=learner_id,
                 active_learner_id=ACTIVE_LEARNER_ID,
             )
+
+
+def _concept_ids_before_active_concept(
+    curriculum: Curriculum,
+    active_concept_id: str,
+) -> list[str]:
+    active_concept = curriculum.concepts.get(active_concept_id)
+    if active_concept is None:
+        raise ValueError(
+            f"Placement active concept {active_concept_id!r} is not in the curriculum"
+        )
+
+    return [
+        concept.concept_id
+        for concept in sorted(curriculum.concepts.values(), key=lambda item: item.order)
+        if concept.order < active_concept.order
+    ]

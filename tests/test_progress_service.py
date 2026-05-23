@@ -38,9 +38,11 @@ from tests.constants import (
     CARGO_HELLO_WORLD_CONCEPT_ID,
     HELLO_RUST_CODE,
     HELLO_RUST_OUTPUT,
+    OWNERSHIP_CONCEPT_ID,
     SUCCESSFUL_CARGO_OUTPUT,
     TEST_LEARNER_ID,
     TEST_NOW,
+    TRAITS_CONCEPT_ID,
     VARIABLES_CONCEPT_ID,
 )
 
@@ -84,6 +86,25 @@ def test_get_active_progress_summary_uses_active_learner(tmp_path):
 
     assert response.learner_id == TEST_LEARNER_ID
     assert response.active_concept_id == CARGO_HELLO_WORLD_CONCEPT_ID
+
+
+def test_get_progress_summary_reports_provisional_placement_skips(tmp_path):
+    session_service, _, _, progress_service = _services(tmp_path)
+    session_service.start_session(
+        StartSessionRequest(initial_rust_level=RustLevel.PROFICIENT)
+    )
+
+    response = progress_service.get_progress_summary(GetProgressSummaryRequest())
+
+    assert response.active_concept_id == TRAITS_CONCEPT_ID
+    assert response.skipped_concepts == [
+        CARGO_HELLO_WORLD_CONCEPT_ID,
+        VARIABLES_CONCEPT_ID,
+        OWNERSHIP_CONCEPT_ID,
+    ]
+    assert response.recent_events[0].event_type == (
+        ProgressEventType.PROVISIONALLY_SKIPPED.value
+    )
 
 
 def test_get_progress_summary_reports_pending_assessment_focus(tmp_path):
@@ -189,6 +210,7 @@ def test_get_progress_summary_derives_skipped_concepts_from_all_events(tmp_path)
     session_service = SessionService(
         learner_repository=repositories.learner_repository(),
         learner_signal_repository=repositories.learner_signal_repository(),
+        curriculum_repository=repositories.curriculum_repository(),
         now=lambda: TEST_NOW,
     )
     progress_service = _progress_service(repositories)
@@ -222,6 +244,7 @@ def test_get_progress_summary_loads_curriculum_once(tmp_path):
     session_service = SessionService(
         learner_repository=repositories.learner_repository(),
         learner_signal_repository=repositories.learner_signal_repository(),
+        curriculum_repository=repositories.curriculum_repository(),
         now=lambda: TEST_NOW,
     )
     curriculum_repository = _CountingCurriculumRepository(
@@ -267,6 +290,7 @@ def _services(tmp_path):
         SessionService(
             learner_repository=repositories.learner_repository(),
             learner_signal_repository=repositories.learner_signal_repository(),
+            curriculum_repository=repositories.curriculum_repository(),
             now=now,
         ),
         LessonService(

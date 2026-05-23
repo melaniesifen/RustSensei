@@ -343,6 +343,7 @@ def _services(tmp_path):
         SessionService(
             learner_repository=repositories.learner_repository(),
             learner_signal_repository=repositories.learner_signal_repository(),
+            curriculum_repository=repositories.curriculum_repository(),
             now=now,
         ),
         LessonService(
