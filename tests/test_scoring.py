@@ -4,7 +4,7 @@ from datetime import datetime, timezone
 
 import pytest
 
-from rust_sensei.domain.attempt import AttemptSubmission
+from rust_sensei.domain.attempt import AttemptSubmission, CommandRunMetadata
 from rust_sensei.domain.curriculum import Concept, LessonVariant
 from rust_sensei.domain.enums import Difficulty, NextAction
 from rust_sensei.domain.scoring import build_assessment, validate_rubric_ids
@@ -77,6 +77,77 @@ def test_build_assessment_scores_compiler_failure_with_notes():
     assert assessment.rubric_scores["rust_correctness"].score == 0.35
     assert assessment.rubric_scores["compiler_error_handling"].score == 0.45
     assert assessment.next_action == NextAction.SIMPLIFY
+
+
+def test_build_assessment_branches_for_repeated_compiler_failures():
+    assessment = build_assessment(
+        attempt=AttemptSubmission(
+            attempt_id="attempt_1",
+            learner_id="local-default",
+            assignment_id="assign_1",
+            lesson_id="lesson_1",
+            client_request_id=None,
+            client_request_fingerprint=None,
+            workspace_root=None,
+            code="fn main() { println!(\"missing semicolon\") }",
+            compiler_output="error: expected `;`",
+            command_run_metadata=[
+                _command_metadata(exit_code=101, output_summary="cargo check failed"),
+                _command_metadata(
+                    exit_code=101,
+                    output_summary="cargo check failed again",
+                ),
+            ],
+            learner_notes=(
+                "I ran cargo check again after editing and still see the same "
+                "semicolon compiler error."
+            ),
+            submitted_at=_fixed_now(),
+        ),
+        concept=_concept(["rust_correctness", "compiler_error_handling"]),
+        difficulty=Difficulty.GUIDED,
+        now=_fixed_now(),
+    )
+
+    assert assessment.confidence >= 0.80
+    assert assessment.next_action == NextAction.BRANCH
+    assert assessment.branch_id == "compiler_feedback_remediation"
+    assert assessment.next_action_reason == (
+        "Repeated compiler-error struggles have high-confidence evidence for "
+        "targeted remediation."
+    )
+
+
+def test_build_assessment_does_not_branch_without_high_confidence():
+    assessment = build_assessment(
+        attempt=AttemptSubmission(
+            attempt_id="attempt_1",
+            learner_id="local-default",
+            assignment_id="assign_1",
+            lesson_id="lesson_1",
+            client_request_id=None,
+            client_request_fingerprint=None,
+            workspace_root=None,
+            code=None,
+            compiler_output="error: expected `;`",
+            command_run_metadata=[
+                _command_metadata(exit_code=101, output_summary="cargo check failed"),
+                _command_metadata(
+                    exit_code=101,
+                    output_summary="cargo check failed again",
+                ),
+            ],
+            learner_notes="I am still seeing the semicolon error.",
+            submitted_at=_fixed_now(),
+        ),
+        concept=_concept(["rust_correctness", "compiler_error_handling"]),
+        difficulty=Difficulty.GUIDED,
+        now=_fixed_now(),
+    )
+
+    assert assessment.confidence < 0.80
+    assert assessment.next_action == NextAction.SIMPLIFY
+    assert assessment.branch_id is None
 
 
 def test_build_assessment_explains_missing_confidence_evidence():
@@ -164,3 +235,17 @@ def _concept(rubric_ids: list[str]) -> Concept:
 
 def _fixed_now() -> datetime:
     return datetime(2026, 5, 10, tzinfo=timezone.utc)
+
+
+def _command_metadata(
+    exit_code: int,
+    output_summary: str,
+) -> CommandRunMetadata:
+    return CommandRunMetadata(
+        command="cargo check",
+        source="learner",
+        cwd=None,
+        exit_code=exit_code,
+        started_at=_fixed_now(),
+        output_summary=output_summary,
+    )

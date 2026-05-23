@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections.abc import Callable
 from dataclasses import dataclass, replace
 from datetime import datetime
 from statistics import mean
@@ -27,6 +28,13 @@ CONTINUE_CONFIDENCE_THRESHOLD = 0.60
 ACCELERATE_RUST_SCORE_THRESHOLD = 0.85
 ACCELERATE_PROGRAMMING_SCORE_THRESHOLD = 0.80
 ACCELERATE_CONFIDENCE_THRESHOLD = 0.80
+BRANCH_CONFIDENCE_THRESHOLD = 0.80
+COMPILER_FEEDBACK_BRANCH_ID = "compiler_feedback_remediation"
+COMPILER_FEEDBACK_BRANCH_SCORE_THRESHOLD = 0.50
+COMPILER_FEEDBACK_BRANCH_FAILURE_COUNT = 2
+PROBLEM_SOLVING_BRANCH_ID = "problem_solving_enrichment"
+PROBLEM_SOLVING_BRANCH_RUST_SCORE_THRESHOLD = 0.70
+PROBLEM_SOLVING_BRANCH_SCORE_THRESHOLD = 0.55
 ADVANCED_FAILURE_SCORE_THRESHOLD = 0.50
 ADVANCED_SUCCESS_SCORE_THRESHOLD = 0.80
 
@@ -120,6 +128,99 @@ class _ConfidenceQualityAdjustment:
     explanation: str
 
 
+@dataclass(frozen=True)
+class _AssessmentSummary:
+    rust_score: float
+    general_programming_score: float
+    compiler_error_handling_score: float
+    problem_solving_score: float
+    confidence: float
+    recent_compile_failures: int
+
+
+@dataclass(frozen=True)
+class _NextStepRule:
+    rule_id: str
+    action: NextAction
+    branch_id: str | None
+    predicate: Callable[[_AssessmentSummary], bool]
+    reason: str
+
+
+NEXT_STEP_RULES = [
+    _NextStepRule(
+        rule_id="compiler_feedback_branch",
+        action=NextAction.BRANCH,
+        branch_id=COMPILER_FEEDBACK_BRANCH_ID,
+        predicate=lambda summary: (
+            summary.compiler_error_handling_score
+            < COMPILER_FEEDBACK_BRANCH_SCORE_THRESHOLD
+            and summary.recent_compile_failures >= COMPILER_FEEDBACK_BRANCH_FAILURE_COUNT
+            and summary.confidence >= BRANCH_CONFIDENCE_THRESHOLD
+        ),
+        reason=(
+            "Repeated compiler-error struggles have high-confidence evidence for "
+            "targeted remediation."
+        ),
+    ),
+    _NextStepRule(
+        rule_id="problem_solving_branch",
+        action=NextAction.BRANCH,
+        branch_id=PROBLEM_SOLVING_BRANCH_ID,
+        predicate=lambda summary: (
+            summary.rust_score >= PROBLEM_SOLVING_BRANCH_RUST_SCORE_THRESHOLD
+            and summary.problem_solving_score < PROBLEM_SOLVING_BRANCH_SCORE_THRESHOLD
+            and summary.confidence >= BRANCH_CONFIDENCE_THRESHOLD
+        ),
+        reason=(
+            "Rust syntax is progressing faster than problem-solving skill with "
+            "high-confidence evidence."
+        ),
+    ),
+    _NextStepRule(
+        rule_id="low_confidence_repeat",
+        action=NextAction.REPEAT,
+        branch_id=None,
+        predicate=lambda summary: (
+            summary.confidence < INSUFFICIENT_EVIDENCE_CONFIDENCE_THRESHOLD
+        ),
+        reason="Assessment confidence is below 0.45.",
+    ),
+    _NextStepRule(
+        rule_id="rust_gap_simplify",
+        action=NextAction.SIMPLIFY,
+        branch_id=None,
+        predicate=lambda summary: summary.rust_score < SIMPLIFY_RUST_SCORE_THRESHOLD,
+        reason="Rust concept score is below 0.50.",
+    ),
+    _NextStepRule(
+        rule_id="strong_performance_accelerate",
+        action=NextAction.ACCELERATE,
+        branch_id=None,
+        predicate=lambda summary: (
+            summary.rust_score >= ACCELERATE_RUST_SCORE_THRESHOLD
+            and summary.general_programming_score
+            >= ACCELERATE_PROGRAMMING_SCORE_THRESHOLD
+            and summary.confidence >= ACCELERATE_CONFIDENCE_THRESHOLD
+        ),
+        reason=(
+            "Rust, general programming, and confidence scores meet "
+            "acceleration thresholds."
+        ),
+    ),
+    _NextStepRule(
+        rule_id="expected_progress_continue",
+        action=NextAction.CONTINUE,
+        branch_id=None,
+        predicate=lambda summary: (
+            summary.rust_score >= CONTINUE_RUST_SCORE_THRESHOLD
+            and summary.confidence >= CONTINUE_CONFIDENCE_THRESHOLD
+        ),
+        reason="Rust score and confidence meet continuation thresholds.",
+    ),
+]
+
+
 class AssessmentScorer(Protocol):
     def score_attempt(
         self,
@@ -189,10 +290,22 @@ def build_assessment(
         ],
         fallback=rust_score,
     )
-    next_action, next_action_reason = _choose_next_action(
-        rust_score=rust_score,
-        general_programming_score=general_programming_score,
-        confidence=confidence,
+    next_action, branch_id, next_action_reason = _choose_next_action(
+        _AssessmentSummary(
+            rust_score=rust_score,
+            general_programming_score=general_programming_score,
+            compiler_error_handling_score=_score_or_default(
+                rubric_scores,
+                "compiler_error_handling",
+            ),
+            problem_solving_score=_score_or_default(
+                rubric_scores,
+                "problem_solving",
+                fallback=general_programming_score,
+            ),
+            confidence=confidence,
+            recent_compile_failures=_compile_failure_count(attempt),
+        )
     )
     missing_evidence = _missing_evidence(attempt)
 
@@ -216,7 +329,7 @@ def build_assessment(
             rubric_scores=rubric_scores,
         ),
         next_action=next_action,
-        branch_id=None,
+        branch_id=branch_id,
         next_action_reason=next_action_reason,
         feedback_summary=_feedback_summary(assessment_status, confidence),
         confidence=confidence,
@@ -548,31 +661,12 @@ def _weighted_mean_required_rubrics(
 
 
 def _choose_next_action(
-    rust_score: float,
-    general_programming_score: float,
-    confidence: float,
-) -> tuple[NextAction, str]:
-    if confidence < INSUFFICIENT_EVIDENCE_CONFIDENCE_THRESHOLD:
-        return NextAction.REPEAT, "Assessment confidence is below 0.45."
-    if rust_score < SIMPLIFY_RUST_SCORE_THRESHOLD:
-        return NextAction.SIMPLIFY, "Rust concept score is below 0.50."
-    if (
-        rust_score >= ACCELERATE_RUST_SCORE_THRESHOLD
-        and general_programming_score >= ACCELERATE_PROGRAMMING_SCORE_THRESHOLD
-        and confidence >= ACCELERATE_CONFIDENCE_THRESHOLD
-    ):
-        return NextAction.ACCELERATE, (
-            "Rust, general programming, and confidence scores meet "
-            "acceleration thresholds."
-        )
-    if (
-        rust_score >= CONTINUE_RUST_SCORE_THRESHOLD
-        and confidence >= CONTINUE_CONFIDENCE_THRESHOLD
-    ):
-        return NextAction.CONTINUE, (
-            "Rust score and confidence meet continuation thresholds."
-        )
-    return NextAction.REPEAT, "No higher-priority rule matched."
+    summary: _AssessmentSummary,
+) -> tuple[NextAction, str | None, str]:
+    for rule in NEXT_STEP_RULES:
+        if rule.predicate(summary):
+            return rule.action, rule.branch_id, rule.reason
+    return NextAction.REPEAT, None, "No higher-priority rule matched."
 
 
 def _feedback_items(
@@ -641,6 +735,31 @@ def _mean_scores(
     if fallback is not None:
         return fallback
     return mean(score.score for score in scores.values())
+
+
+def _score_or_default(
+    scores: dict[str, SkillScore],
+    rubric_id: str,
+    fallback: float = 1.0,
+) -> float:
+    if rubric_id not in scores:
+        return fallback
+    return scores[rubric_id].score
+
+
+def _compile_failure_count(attempt: AttemptSubmission) -> int:
+    metadata_failure_count = sum(
+        1
+        for item in attempt.command_run_metadata
+        if _metadata_is_primary(item) and item.exit_code not in (None, 0)
+    )
+    if metadata_failure_count:
+        return metadata_failure_count
+    if _has_text(attempt.compiler_output) and _text_has_failure(
+        attempt.compiler_output
+    ):
+        return 1
+    return 0
 
 
 def _has_success_signal(attempt: AttemptSubmission) -> bool:
