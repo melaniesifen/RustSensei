@@ -118,6 +118,58 @@ def test_build_assessment_branches_for_repeated_compiler_failures():
     )
 
 
+def test_build_assessment_branches_for_problem_solving_gap():
+    assessment = build_assessment(
+        attempt=AttemptSubmission(
+            attempt_id="attempt_1",
+            learner_id="local-default",
+            assignment_id="assign_1",
+            lesson_id="lesson_1",
+            client_request_id=None,
+            client_request_fingerprint=None,
+            workspace_root=None,
+            code=(
+                "fn explain(message: &String) -> usize { "
+                "println!(\"{message}\"); message.len() "
+                "} fn main() { "
+                "let message = String::from(\"hello\"); "
+                "let count = explain(&message); "
+                "println!(\"{message} {count}\"); "
+                "}"
+            ),
+            compiler_output="Finished dev profile target(s) in 0.10s",
+            test_output="test result: ok. 1 passed; 0 failed",
+            command_run_metadata=[
+                _command_metadata(exit_code=0, output_summary="cargo test passed")
+            ],
+            learner_notes=(
+                "I guessed with trial and error and hardcoded parts; I do not "
+                "understand why this approach works yet."
+            ),
+            submitted_at=_fixed_now(),
+        ),
+        concept=_concept(
+            [
+                "rust_correctness",
+                "rust_idioms",
+                "problem_solving",
+                "compiler_error_handling",
+            ]
+        ),
+        difficulty=Difficulty.STANDARD,
+        now=_fixed_now(),
+    )
+
+    assert assessment.confidence >= 0.80
+    assert assessment.rubric_scores["problem_solving"].score == 0.50
+    assert assessment.next_action == NextAction.BRANCH
+    assert assessment.branch_id == "problem_solving_enrichment"
+    assert assessment.next_action_reason == (
+        "Rust syntax is progressing faster than problem-solving skill with "
+        "high-confidence evidence."
+    )
+
+
 def test_build_assessment_does_not_branch_without_high_confidence():
     assessment = build_assessment(
         attempt=AttemptSubmission(

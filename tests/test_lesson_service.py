@@ -1,6 +1,6 @@
 import pytest
 
-from rust_sensei.domain.enums import AssignmentStatus, RustLevel
+from rust_sensei.domain.enums import AssignmentStatus, NextAction, RustLevel
 from rust_sensei.domain.learner import LearnerProfile
 from rust_sensei.domain.lesson import LessonAssignment
 from rust_sensei.domain.progress import ProgressEventType
@@ -20,10 +20,12 @@ from tests.constants import (
     CARGO_HELLO_WORLD_CONCEPT_ID,
     HELLO_RUST_CODE,
     HELLO_RUST_OUTPUT,
+    OWNERSHIP_CONCEPT_ID,
     SUCCESSFUL_CARGO_OUTPUT,
     TEST_CURRICULUM_VERSION,
     TEST_LEARNER_ID,
     TEST_NOW,
+    TRAITS_CONCEPT_ID,
     VARIABLES_CONCEPT_ID,
 )
 
@@ -304,6 +306,49 @@ def test_get_next_lesson_continues_after_assessed_assignment(tmp_path):
     assert response.assignment.concept_id == VARIABLES_CONCEPT_ID
     assert response.assignment.selection_rationale.startswith(
         "Selected by accelerate action after assessment"
+    )
+
+
+def test_get_next_lesson_branches_for_problem_solving_gap(tmp_path):
+    session_service, lesson_service, assessment_service = _services(tmp_path)
+    session_service.start_session(
+        StartSessionRequest(initial_rust_level=RustLevel.INTERMEDIATE)
+    )
+    first = lesson_service.get_next_lesson(GetNextLessonRequest())
+    assert first.assignment is not None
+    assert first.assignment.concept_id == OWNERSHIP_CONCEPT_ID
+    submitted = assessment_service.submit_attempt(
+        SubmitAttemptRequest(
+            assignment_id=first.assignment.assignment_id,
+            code=(
+                "fn describe(message: &String) -> usize { "
+                "println!(\"{message}\"); message.len() "
+                "} fn main() { "
+                "let message = String::from(\"borrowed\"); "
+                "let count = describe(&message); "
+                "println!(\"{message} {count}\"); "
+                "}"
+            ),
+            compiler_output=SUCCESSFUL_CARGO_OUTPUT,
+            test_output="test result: ok. 1 passed; 0 failed",
+            learner_notes=(
+                "I guessed with trial and error and hardcoded parts; I do not "
+                "understand why the borrowing approach works yet."
+            ),
+        )
+    )
+
+    assessment = assessment_service.assess_attempt(
+        AssessAttemptRequest(attempt_id=submitted.attempt_id)
+    )
+    response = lesson_service.get_next_lesson(GetNextLessonRequest())
+
+    assert assessment.assessment.next_action == NextAction.BRANCH
+    assert assessment.assessment.branch_id == "problem_solving_enrichment"
+    assert response.assignment is not None
+    assert response.assignment.concept_id == TRAITS_CONCEPT_ID
+    assert response.assignment.selection_rationale.startswith(
+        "Selected branch target problem_solving_enrichment after assessment"
     )
 
 

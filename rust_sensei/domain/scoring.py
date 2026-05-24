@@ -48,12 +48,24 @@ FAILURE_WITH_LEARNER_NOTES_SCORE = 0.45
 SHORT_CODE_SCORE = 0.45
 BASE_CODE_QUALITY_SCORE = 0.72
 BASE_PROBLEM_SOLVING_SCORE = 0.60
+PROBLEM_SOLVING_STRUGGLE_SCORE = 0.50
 FUNCTION_BOUNDARY_BONUS = 0.05
 BLUNT_IDIOM_PENALTY = 0.10
 MAINTAINABILITY_FUNCTION_BONUS = 0.05
 LEARNER_NOTES_BONUS = 0.10
 TEST_OUTPUT_BONUS = 0.15
 DSA_MARKER_BONUS = 0.05
+PROBLEM_SOLVING_STRUGGLE_MARKERS = (
+    "i guessed",
+    "i'm guessing",
+    "i am guessing",
+    "trial and error",
+    "not sure why",
+    "don't understand",
+    "do not understand",
+    "copied this",
+    "copied the",
+)
 
 RUBRIC_EVIDENCE_WEIGHTS = {
     "rust_correctness": {
@@ -444,6 +456,11 @@ def _score_problem_solving(
     if not _has_text(attempt.code):
         return FAILURE_SIGNAL_SCORE, ["No code was submitted for solution review."]
 
+    if _has_problem_solving_struggle_signal(attempt):
+        return PROBLEM_SOLVING_STRUGGLE_SCORE, [
+            "Learner notes indicate the solution approach is not yet understood."
+        ]
+
     score = BASE_PROBLEM_SOLVING_SCORE
     evidence = ["Code was submitted for solution review."]
     if _has_text(attempt.learner_notes):
@@ -459,6 +476,13 @@ def _score_problem_solving(
         score += DSA_MARKER_BONUS
         evidence.append("Code includes a recognizable data-structure or iteration marker.")
     return _clamp(score), evidence
+
+
+def _has_problem_solving_struggle_signal(attempt: AttemptSubmission) -> bool:
+    if not _has_text(attempt.learner_notes):
+        return False
+    notes = attempt.learner_notes.lower()
+    return any(marker in notes for marker in PROBLEM_SOLVING_STRUGGLE_MARKERS)
 
 
 def _confidence_breakdown(
