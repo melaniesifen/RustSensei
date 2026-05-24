@@ -4,7 +4,7 @@
 
 This document defines how Rust Sensei adapts lessons based on learner performance.
 
-The target curriculum is a concept graph. The implemented v1 curriculum is a reduced ordered concept model with prompt variants, rubric ids, learner commands, and branch target metadata. Future richer graph metadata may add prerequisites, competencies, baseline tasks, stretch signals, struggle signals, next concepts, and completion thresholds.
+The target curriculum is a concept graph. The implemented v1 curriculum is an ordered concept model with prompt variants, rubric ids, learner commands, branch target metadata, prerequisites, competencies, baseline tasks, stretch signals, struggle signals, next concepts, and completion thresholds. Selection policy use of the richer graph metadata can expand incrementally.
 
 Primary requirement links:
 
@@ -17,11 +17,11 @@ Primary requirement links:
 
 ## 2. Functional Requirements
 
-- `AL-FR-01`: The curriculum must be stored as structured concept specs. The implemented v1 shape is reduced but still structured and versioned.
-- `AL-FR-02`: Future richer concept specs should define prerequisite concept ids.
-- `AL-FR-03`: Future richer concept specs should define baseline competency criteria.
-- `AL-FR-04`: Future richer concept specs should define stretch signals.
-- `AL-FR-05`: Future richer concept specs should define struggle signals.
+- `AL-FR-01`: The curriculum must be stored as structured concept specs. The implemented v1 shape is structured and versioned, with graph metadata loaded and validated even where selection policy use remains conservative.
+- `AL-FR-02`: Concept specs should define prerequisite concept ids when applicable.
+- `AL-FR-03`: Concept specs should define baseline competency criteria when applicable.
+- `AL-FR-04`: Concept specs should define stretch signals when applicable.
+- `AL-FR-05`: Concept specs should define struggle signals when applicable.
 - `AL-FR-06`: Lesson selection must use learner profile, recent assessments, and confidence.
 - `AL-FR-07`: Lesson selection must support `simplify`, `repeat`, `continue`, `accelerate`, and `branch` actions. The current deterministic scorer emits `branch` for high-confidence repeated compiler failures and problem-solving gaps when Rust syntax evidence is strong.
 - `AL-FR-08`: Placement handling records provisional skips for earlier concepts when a learner starts as `proficient` or `expert`.
@@ -93,7 +93,7 @@ class ConceptSpec:
     completion_thresholds: dict[str, float]
 ```
 
-The implemented v1 `Concept` shape is intentionally smaller:
+The implemented v1 `Concept` shape supports the graph metadata fields while lesson selection still uses a conservative subset of them:
 
 ```python
 @dataclass(frozen=True)
@@ -112,11 +112,18 @@ class Concept:
     concept_id: str
     title: str
     order: int
+    prerequisites: list[str]
     default_difficulty: str
+    competency_goals: list[str]
+    baseline_task: str | None
     learner_command: str | None
+    stretch_signals: list[str]
+    struggle_signals: list[str]
     rubric_ids: list[str]
     variants: list[LessonVariant]
+    next_concepts: list[str]
     branch_targets: dict[str, list[str]]
+    completion_thresholds: dict[str, float]
 ```
 
 The selection decision shape remains:
@@ -532,7 +539,7 @@ Diagram description:
 
 ### 7.6 Concept Spec Invalid
 
-- Trigger: Missing required current fields, invalid rubric ids, duplicate variant ids, invalid command metadata, or invalid future graph metadata such as prerequisites and next concept references.
+- Trigger: Missing required current fields, invalid rubric ids, duplicate variant ids, invalid command metadata, or invalid graph metadata such as prerequisites, next concept references, and completion thresholds.
 - Expected behavior: Fail startup validation and report invalid concept ids.
 - Requirement link: `AL-FR-01`.
 
