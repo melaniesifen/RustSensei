@@ -34,7 +34,7 @@ This design supports these primary requirements:
 
 ### 2.2 Lesson Planning
 
-- `FR-05`: Rust Sensei must choose a next-step action after each assessment. The implemented deterministic v1 scorer emits `simplify`, `repeat`, `continue`, `accelerate`, and high-confidence `branch` actions for repeated compiler failures.
+- `FR-05`: Rust Sensei must choose a next-step action after each assessment. The implemented deterministic v1 scorer emits `simplify`, `repeat`, `continue`, `accelerate`, and high-confidence `branch` actions for repeated compiler failures and problem-solving gaps when Rust syntax evidence is strong.
 - `FR-06`: The default curriculum target must be general Rust fluency before specialized tracks.
 - `FR-06`: Specialized tracks such as CLI tools, backend services, async, performance, or LeetCode-style practice are out of the v1 default path unless assessment results justify a branch.
 - `FR-01`: A learner who selects `new` may start with Hello World and Cargo basics.
@@ -264,7 +264,7 @@ Requirement mapping:
 18. Codex calls `assess_attempt` with the `attempt_id`.
 19. Rust Sensei returns an existing assessment for duplicate assessment requests or creates one assessment for a new attempt.
 20. Rust Sensei scores the attempt across rubric dimensions and updates learner state. This satisfies `FR-02`, `FR-03`, and `FR-04`.
-21. Rust Sensei returns feedback, evidence, confidence, and one next-step action. The deterministic v1 scorer emits `simplify`, `repeat`, `continue`, `accelerate`, or a high-confidence compiler-remediation `branch`. This satisfies the current v1 subset of `FR-05`.
+21. Rust Sensei returns feedback, evidence, confidence, and one next-step action. The deterministic v1 scorer emits `simplify`, `repeat`, `continue`, `accelerate`, or high-confidence remediation/enrichment `branch` actions. This satisfies the current v1 subset of `FR-05`.
 22. Codex writes a lesson report file with the prompt, file paths, command evidence, scores, confidence, feedback, and next action.
 23. Codex presents coaching feedback and the next learning step.
 24. The learner continues the cycle.
