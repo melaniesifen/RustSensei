@@ -204,11 +204,18 @@ def curriculum_concept_to_dto(concept: Concept) -> CurriculumConceptDTO:
         concept_id=concept.concept_id,
         title=concept.title,
         order=concept.order,
+        prerequisites=list(concept.prerequisites),
         default_difficulty=concept.default_difficulty,
+        competency_goals=list(concept.competency_goals),
+        baseline_task=concept.baseline_task,
         learner_command=concept.learner_command,
+        stretch_signals=list(concept.stretch_signals),
+        struggle_signals=list(concept.struggle_signals),
         rubric_ids=list(concept.rubric_ids),
         variant_ids=[variant.variant_id for variant in concept.variants],
+        next_concepts=list(concept.next_concepts),
         branch_target_ids=sorted(concept.branch_targets),
+        completion_thresholds=dict(concept.completion_thresholds),
     )
 
 

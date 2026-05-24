@@ -13,12 +13,36 @@
       "concept_id": "cargo_hello_world",
       "title": "Cargo And Hello World",
       "order": 10,
+      "prerequisites": [],
       "default_difficulty": "intro",
+      "competency_goals": [
+        "Create a binary Cargo project",
+        "Edit the generated main function",
+        "Run the project with Cargo"
+      ],
+      "baseline_task": "Create a Cargo binary project that prints Hello, Rust Sensei.",
       "learner_command": "cargo run",
+      "stretch_signals": [
+        "Uses a clear greeting message",
+        "Explains where src/main.rs belongs",
+        "Runs the program after editing it"
+      ],
+      "struggle_signals": [
+        "Cannot create a Cargo project",
+        "Edits the wrong file",
+        "Does not run cargo run"
+      ],
       "rubric_ids": [
         "rust_correctness",
         "compiler_error_handling"
       ],
+      "next_concepts": [
+        "variables_primitive_types"
+      ],
+      "completion_thresholds": {
+        "rust_correctness": 0.65,
+        "compiler_error_handling": 0.5
+      },
       "variants": [
         {
           "variant_id": "intro_001",
@@ -73,13 +97,35 @@
       "concept_id": "variables_primitive_types",
       "title": "Variables And Primitive Types",
       "order": 20,
+      "prerequisites": [
+        "cargo_hello_world"
+      ],
       "default_difficulty": "guided",
+      "competency_goals": [
+        "Declare immutable variables with primitive values",
+        "Use println! to display values",
+        "Recognize simple type inference"
+      ],
+      "baseline_task": "Declare and print 3 immutable variables with different primitive types.",
       "learner_command": "cargo run",
+      "stretch_signals": [
+        "Uses meaningful variable names",
+        "Adds more than 3 appropriate primitive values",
+        "Keeps printed output readable"
+      ],
+      "struggle_signals": [
+        "Cannot compile a basic let binding",
+        "Confuses string literals with owned String values",
+        "Does not run the learner command"
+      ],
       "rubric_ids": [
         "rust_correctness",
         "rust_idioms",
         "readability",
         "compiler_error_handling"
+      ],
+      "next_concepts": [
+        "ownership_borrowing_intro"
       ],
       "branch_targets": {
         "compiler_feedback_remediation": [
@@ -88,6 +134,11 @@
         "problem_solving_enrichment": [
           "ownership_borrowing_intro"
         ]
+      },
+      "completion_thresholds": {
+        "rust_correctness": 0.7,
+        "rust_idioms": 0.6,
+        "readability": 0.6
       },
       "variants": [
         {
@@ -119,14 +170,41 @@
       "concept_id": "ownership_borrowing_intro",
       "title": "Ownership And Borrowing Introduction",
       "order": 70,
+      "prerequisites": [
+        "variables_primitive_types"
+      ],
       "default_difficulty": "standard",
+      "competency_goals": [
+        "Borrow a String without moving it",
+        "Use references in helper functions",
+        "Check ownership errors with Cargo"
+      ],
+      "baseline_task": "Pass a String by reference to a helper function, then use it again.",
       "learner_command": "cargo check",
+      "stretch_signals": [
+        "Chooses &str where appropriate",
+        "Explains why the String remains usable",
+        "Keeps helper function responsibilities small"
+      ],
+      "struggle_signals": [
+        "Moves a String unintentionally",
+        "Cannot interpret a borrow checker error",
+        "Avoids using a helper function"
+      ],
       "rubric_ids": [
         "rust_correctness",
         "rust_idioms",
         "problem_solving",
         "compiler_error_handling"
       ],
+      "next_concepts": [
+        "traits_generics_testing"
+      ],
+      "completion_thresholds": {
+        "rust_correctness": 0.72,
+        "rust_idioms": 0.62,
+        "problem_solving": 0.6
+      },
       "variants": [
         {
           "variant_id": "standard_001",
@@ -157,14 +235,42 @@
       "concept_id": "traits_generics_testing",
       "title": "Traits, Generics, And Testing",
       "order": 100,
+      "prerequisites": [
+        "ownership_borrowing_intro"
+      ],
       "default_difficulty": "challenge",
+      "competency_goals": [
+        "Write a generic helper function",
+        "Apply a useful trait bound",
+        "Add a focused unit test"
+      ],
+      "baseline_task": "Implement a generic helper function with a trait bound and add one unit test for it.",
       "learner_command": "cargo test",
+      "stretch_signals": [
+        "Keeps the trait bound minimal",
+        "Adds more than one meaningful test case",
+        "Explains the generic tradeoff"
+      ],
+      "struggle_signals": [
+        "Uses an unnecessary or missing trait bound",
+        "Cannot get tests to compile",
+        "Writes tests that do not exercise the helper"
+      ],
       "rubric_ids": [
         "rust_correctness",
         "rust_idioms",
         "maintainability",
         "problem_solving"
       ],
+      "next_concepts": [
+        "advanced_design_review"
+      ],
+      "completion_thresholds": {
+        "rust_correctness": 0.75,
+        "rust_idioms": 0.68,
+        "maintainability": 0.65,
+        "problem_solving": 0.68
+      },
       "variants": [
         {
           "variant_id": "challenge_001",
@@ -195,14 +301,40 @@
       "concept_id": "advanced_design_review",
       "title": "Advanced Rust Design Review",
       "order": 110,
+      "prerequisites": [
+        "traits_generics_testing"
+      ],
       "default_difficulty": "advanced",
+      "competency_goals": [
+        "Design a small module API",
+        "Separate public and private responsibilities",
+        "Explain API tradeoffs with tests"
+      ],
+      "baseline_task": "Build a small Rust module with a public API, internal helper, and tests, then explain the API tradeoffs.",
       "learner_command": "cargo test",
+      "stretch_signals": [
+        "Keeps the public API narrow",
+        "Uses tests to document behavior",
+        "Names concrete API tradeoffs"
+      ],
+      "struggle_signals": [
+        "Exposes implementation details unnecessarily",
+        "Omits tests for public behavior",
+        "Cannot explain the design tradeoff"
+      ],
       "rubric_ids": [
         "rust_correctness",
         "rust_idioms",
         "maintainability",
         "problem_solving"
       ],
+      "next_concepts": [],
+      "completion_thresholds": {
+        "rust_correctness": 0.78,
+        "rust_idioms": 0.7,
+        "maintainability": 0.7,
+        "problem_solving": 0.7
+      },
       "variants": [
         {
           "variant_id": "advanced_001",

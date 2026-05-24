@@ -75,6 +75,25 @@ def test_list_curriculum_concepts_returns_ordered_inventory(tmp_path):
     variables = response.concepts[1]
     assert variables.title == "Variables And Primitive Types"
     assert variables.default_difficulty == "guided"
+    assert variables.prerequisites == [CARGO_HELLO_WORLD_CONCEPT_ID]
+    assert variables.competency_goals == [
+        "Declare immutable variables with primitive values",
+        "Use println! to display values",
+        "Recognize simple type inference",
+    ]
+    assert variables.baseline_task == (
+        "Declare and print 3 immutable variables with different primitive types."
+    )
+    assert variables.stretch_signals == [
+        "Uses meaningful variable names",
+        "Adds more than 3 appropriate primitive values",
+        "Keeps printed output readable",
+    ]
+    assert variables.struggle_signals == [
+        "Cannot compile a basic let binding",
+        "Confuses string literals with owned String values",
+        "Does not run the learner command",
+    ]
     assert variables.learner_command == "cargo run"
     assert variables.rubric_ids == [
         "rust_correctness",
@@ -83,10 +102,16 @@ def test_list_curriculum_concepts_returns_ordered_inventory(tmp_path):
         "compiler_error_handling",
     ]
     assert variables.variant_ids == ["guided_001"]
+    assert variables.next_concepts == [OWNERSHIP_CONCEPT_ID]
     assert variables.branch_target_ids == [
         "compiler_feedback_remediation",
         "problem_solving_enrichment",
     ]
+    assert variables.completion_thresholds == {
+        "rust_correctness": 0.7,
+        "rust_idioms": 0.6,
+        "readability": 0.6,
+    }
 
 
 def test_get_next_lesson_reuses_active_assignment(tmp_path):

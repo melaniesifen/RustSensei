@@ -15,9 +15,14 @@ def test_default_variant_matches_default_difficulty():
                     "concept_id": "variables",
                     "title": "Variables",
                     "order": 1,
+                    "competency_goals": ["Declare variables"],
+                    "baseline_task": "Print a variable",
+                    "stretch_signals": ["Uses clear names"],
+                    "struggle_signals": ["Cannot compile a let binding"],
                     "default_difficulty": "guided",
                     "learner_command": "cargo run",
                     "rubric_ids": ["rust_correctness"],
+                    "completion_thresholds": {"rust_correctness": 0.7},
                     "branch_targets": {"local_branch": ["variables"]},
                     "variants": [
                         {
@@ -44,6 +49,21 @@ def test_default_variant_matches_default_difficulty():
     assert curriculum.branch_fallbacks == {"global_branch": ["variables"]}
     assert curriculum.concepts["variables"].branch_targets == {
         "local_branch": ["variables"]
+    }
+    assert curriculum.concepts["variables"].prerequisites == []
+    assert curriculum.concepts["variables"].competency_goals == [
+        "Declare variables"
+    ]
+    assert curriculum.concepts["variables"].baseline_task == "Print a variable"
+    assert curriculum.concepts["variables"].stretch_signals == [
+        "Uses clear names"
+    ]
+    assert curriculum.concepts["variables"].struggle_signals == [
+        "Cannot compile a let binding"
+    ]
+    assert curriculum.concepts["variables"].next_concepts == []
+    assert curriculum.concepts["variables"].completion_thresholds == {
+        "rust_correctness": 0.7
     }
     assert (
         curriculum.concepts["variables"].default_variant().workspace_artifact_policy
@@ -257,6 +277,37 @@ def test_curriculum_rejects_malformed_branch_targets(branch_targets):
         Curriculum.from_dict(data)
 
 
+@pytest.mark.parametrize("field_name", ["prerequisites", "next_concepts"])
+def test_curriculum_rejects_unknown_graph_references(field_name):
+    data = _valid_curriculum()
+    data["concepts"][0][field_name] = ["missing"]
+
+    with pytest.raises(ValueError, match=field_name):
+        Curriculum.from_dict(data)
+
+
+@pytest.mark.parametrize(
+    "completion_thresholds",
+    [
+        {"rust_correctness": -0.1},
+        {"rust_correctness": 1.1},
+        {"rust_correctness": float("nan")},
+        {"rust_correctness": float("inf")},
+        {"rust_correctness": "high"},
+        {"unknown_rubric": 0.7},
+        {"": 0.7},
+    ],
+)
+def test_curriculum_rejects_malformed_completion_thresholds(
+    completion_thresholds,
+):
+    data = _valid_curriculum()
+    data["concepts"][0]["completion_thresholds"] = completion_thresholds
+
+    with pytest.raises(ValueError):
+        Curriculum.from_dict(data)
+
+
 def test_curriculum_rejects_invalid_lesson_command_shape():
     data = _valid_curriculum()
     data["concepts"][0]["variants"][0]["lesson_commands"][0]["required"] = "true"
@@ -274,10 +325,17 @@ def _valid_curriculum():
                 "concept_id": "variables",
                 "title": "Variables",
                 "order": 1,
+                "prerequisites": [],
                 "default_difficulty": "intro",
+                "competency_goals": ["Declare variables"],
+                "baseline_task": "Print a variable",
                 "learner_command": "cargo run",
+                "stretch_signals": ["Uses clear names"],
+                "struggle_signals": ["Cannot compile a let binding"],
                 "rubric_ids": ["rust_correctness"],
+                "next_concepts": [],
                 "branch_targets": {"local_branch": ["variables"]},
+                "completion_thresholds": {"rust_correctness": 0.7},
                 "variants": [
                     {
                         "variant_id": "intro_001",

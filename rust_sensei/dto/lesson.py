@@ -41,11 +41,18 @@ class CurriculumConceptDTO(StrictDTO):
     concept_id: str
     title: str
     order: int
+    prerequisites: list[str] = Field(default_factory=list)
     default_difficulty: str
+    competency_goals: list[str] = Field(default_factory=list)
+    baseline_task: str | None = None
     learner_command: str | None = None
+    stretch_signals: list[str] = Field(default_factory=list)
+    struggle_signals: list[str] = Field(default_factory=list)
     rubric_ids: list[str]
     variant_ids: list[str]
+    next_concepts: list[str] = Field(default_factory=list)
     branch_target_ids: list[str] = Field(default_factory=list)
+    completion_thresholds: dict[str, float] = Field(default_factory=dict)
 
 
 class ListCurriculumConceptsResponse(StrictDTO):

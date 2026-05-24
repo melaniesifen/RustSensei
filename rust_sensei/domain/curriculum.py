@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass, field
 from typing import Any
 
@@ -49,7 +50,14 @@ class Concept:
     learner_command: str | None
     rubric_ids: list[str]
     variants: list[LessonVariant]
+    prerequisites: list[str] = field(default_factory=list)
+    competency_goals: list[str] = field(default_factory=list)
+    baseline_task: str | None = None
+    stretch_signals: list[str] = field(default_factory=list)
+    struggle_signals: list[str] = field(default_factory=list)
+    next_concepts: list[str] = field(default_factory=list)
     branch_targets: dict[str, list[str]] = field(default_factory=dict)
+    completion_thresholds: dict[str, float] = field(default_factory=dict)
 
     def default_variant(self) -> LessonVariant:
         variant = next(
@@ -105,8 +113,13 @@ def _concept_from_dict(data: dict[str, Any]) -> Concept:
         concept_id=concept_id,
         title=_require_text(data, "title"),
         order=_require_int(data, "order"),
+        prerequisites=_optional_string_list(data, "prerequisites"),
         default_difficulty=_require_text(data, "default_difficulty"),
+        competency_goals=_optional_string_list(data, "competency_goals"),
+        baseline_task=_optional_text(data, "baseline_task"),
         learner_command=_optional_text(data, "learner_command"),
+        stretch_signals=_optional_string_list(data, "stretch_signals"),
+        struggle_signals=_optional_string_list(data, "struggle_signals"),
         rubric_ids=_require_string_list(data, "rubric_ids"),
         variants=[
             _variant_from_dict(
@@ -116,9 +129,14 @@ def _concept_from_dict(data: dict[str, Any]) -> Concept:
             )
             for index, item in enumerate(_require_list(data, "variants"))
         ],
+        next_concepts=_optional_string_list(data, "next_concepts"),
         branch_targets=_branch_targets_from_mapping(
             _optional_mapping(data, "branch_targets"),
             f"{label}.branch_targets",
+        ),
+        completion_thresholds=_completion_thresholds_from_mapping(
+            _optional_mapping(data, "completion_thresholds"),
+            f"{label}.completion_thresholds",
         ),
     )
 
@@ -182,6 +200,19 @@ def _validate_curriculum(curriculum: Curriculum) -> None:
         _validate_rubrics(concept)
         _validate_commands(concept)
         concept.default_variant()
+        _validate_concept_references(
+            curriculum,
+            concept.concept_id,
+            "prerequisites",
+            concept.prerequisites,
+        )
+        _validate_concept_references(
+            curriculum,
+            concept.concept_id,
+            "next_concepts",
+            concept.next_concepts,
+        )
+        _validate_completion_thresholds(concept)
         _validate_branch_targets(curriculum, concept.branch_targets)
     _validate_branch_targets(curriculum, curriculum.branch_fallbacks)
 
@@ -216,6 +247,32 @@ def _validate_commands(concept: Concept) -> None:
                 raise ValueError(f"Variant {variant.variant_id} has an empty command")
             if not command.purpose:
                 raise ValueError(f"Variant {variant.variant_id} has an empty purpose")
+
+
+def _validate_concept_references(
+    curriculum: Curriculum,
+    concept_id: str,
+    field_name: str,
+    target_ids: list[str],
+) -> None:
+    missing = [
+        target_id
+        for target_id in target_ids
+        if target_id not in curriculum.concepts
+    ]
+    if missing:
+        raise ValueError(
+            f"Concept {concept_id} {field_name} reference unknown concepts: {missing}"
+        )
+
+
+def _validate_completion_thresholds(concept: Concept) -> None:
+    unknown = sorted(set(concept.completion_thresholds) - set(concept.rubric_ids))
+    if unknown:
+        raise ValueError(
+            f"Concept {concept.concept_id} completion thresholds reference "
+            f"rubrics not used by the concept: {unknown}"
+        )
 
 
 def _validate_branch_targets(
@@ -283,6 +340,25 @@ def _branch_targets_from_mapping(
             allow_empty=False,
         )
     return targets
+
+
+def _completion_thresholds_from_mapping(
+    data: dict[str, Any],
+    label: str,
+) -> dict[str, float]:
+    thresholds: dict[str, float] = {}
+    for rubric_id, threshold in data.items():
+        if not isinstance(rubric_id, str) or not rubric_id.strip():
+            raise ValueError(f"{label} keys must be non-empty strings")
+        if isinstance(threshold, bool) or not isinstance(threshold, (int, float)):
+            raise ValueError(f"{label}.{rubric_id} must be a number")
+        threshold_value = float(threshold)
+        if not math.isfinite(threshold_value):
+            raise ValueError(f"{label}.{rubric_id} must be a finite number")
+        if threshold_value < 0.0 or threshold_value > 1.0:
+            raise ValueError(f"{label}.{rubric_id} must be between 0.0 and 1.0")
+        thresholds[rubric_id] = threshold_value
+    return thresholds
 
 
 def _require_mapping(value: Any, label: str) -> dict[str, Any]:

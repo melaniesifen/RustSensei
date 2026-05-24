@@ -912,6 +912,48 @@ def test_curriculum_repository_rejects_invalid_curriculum(tmp_path):
         repository.get_curriculum()
 
 
+def test_curriculum_repository_rejects_non_finite_completion_threshold(tmp_path):
+    curriculum_path = tmp_path / "bad_curriculum.json"
+    curriculum_path.write_text(
+        """
+        {
+            "curriculum_version": "test",
+            "concepts": [
+                {
+                    "concept_id": "variables",
+                    "title": "Variables",
+                    "order": 1,
+                    "default_difficulty": "intro",
+                    "learner_command": null,
+                    "rubric_ids": ["rust_correctness"],
+                    "completion_thresholds": {"rust_correctness": NaN},
+                    "variants": [
+                        {
+                            "variant_id": "intro_001",
+                            "difficulty": "intro",
+                            "prompt": "Prompt",
+                            "success_criteria": ["Compiles"]
+                        }
+                    ]
+                }
+            ]
+        }
+        """,
+        encoding="utf-8",
+    )
+    repository = JsonRepositoryFactory(
+        tmp_path,
+        curriculum_path=curriculum_path,
+    ).curriculum_repository()
+
+    with pytest.raises(StorageError) as error:
+        repository.get_curriculum()
+
+    assert error.value.envelope.message == "Curriculum seed data is invalid"
+    assert error.value.envelope.retryable is False
+    assert error.value.envelope.details["path"] == str(curriculum_path)
+
+
 def test_curriculum_repository_wraps_missing_custom_curriculum_path(tmp_path):
     curriculum_path = tmp_path / "missing_curriculum.json"
     repository = JsonRepositoryFactory(
