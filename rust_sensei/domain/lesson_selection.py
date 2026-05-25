@@ -33,6 +33,12 @@ class LessonSelectionDecision:
     branch_id: str | None = None
 
 
+@dataclass(frozen=True)
+class _NextConceptSelection:
+    concept: Concept
+    rationale_detail: str
+
+
 LessonHandler = Callable[[LessonSelectionContext], LessonSelectionDecision]
 
 
@@ -118,7 +124,8 @@ def select_repeat_variant(context: LessonSelectionContext) -> LessonSelectionDec
 
 
 def select_next_concept(context: LessonSelectionContext) -> LessonSelectionDecision:
-    concept = _next_concept(context.curriculum, context.last_assignment.concept_id)
+    selected = _next_concept(context.curriculum, context.last_assignment.concept_id)
+    concept = selected.concept
     variant = _variant_for_difficulty(
         concept=concept,
         difficulty=concept.default_difficulty,
@@ -128,7 +135,7 @@ def select_next_concept(context: LessonSelectionContext) -> LessonSelectionDecis
         concept=concept,
         variant=variant,
         selection_rationale=(
-            "Selected by continue action after assessment: "
+            f"Selected by continue action after assessment; {selected.rationale_detail}: "
             f"{context.last_assessment.next_action_reason}"
         ),
     )
@@ -137,7 +144,8 @@ def select_next_concept(context: LessonSelectionContext) -> LessonSelectionDecis
 def select_accelerated_concept(
     context: LessonSelectionContext,
 ) -> LessonSelectionDecision:
-    concept = _next_concept(context.curriculum, context.last_assignment.concept_id)
+    selected = _next_concept(context.curriculum, context.last_assignment.concept_id)
+    concept = selected.concept
     variant = _variant_for_difficulty(
         concept=concept,
         difficulty=Difficulty.CHALLENGE,
@@ -147,7 +155,7 @@ def select_accelerated_concept(
         concept=concept,
         variant=variant,
         selection_rationale=(
-            "Selected by accelerate action after assessment: "
+            f"Selected by accelerate action after assessment; {selected.rationale_detail}: "
             f"{context.last_assessment.next_action_reason}"
         ),
     )
@@ -220,7 +228,19 @@ def _branch_target_concept(
     )
 
 
-def _next_concept(curriculum: Curriculum, current_concept_id: str) -> Concept:
+def _next_concept(
+    curriculum: Curriculum,
+    current_concept_id: str,
+) -> _NextConceptSelection:
+    current_concept = curriculum.concepts[current_concept_id]
+    for target_id in current_concept.next_concepts:
+        target = curriculum.concepts.get(target_id)
+        if target is not None:
+            return _NextConceptSelection(
+                concept=target,
+                rationale_detail=f"followed concept graph next_concepts to {target_id}",
+            )
+
     ordered = sorted(curriculum.concepts.values(), key=lambda concept: concept.order)
     current_index = next(
         (
@@ -231,8 +251,15 @@ def _next_concept(curriculum: Curriculum, current_concept_id: str) -> Concept:
         None,
     )
     if current_index is None or current_index == len(ordered) - 1:
-        return curriculum.concepts[current_concept_id]
-    return ordered[current_index + 1]
+        return _NextConceptSelection(
+            concept=current_concept,
+            rationale_detail="no next concept was available, repeating current concept",
+        )
+    target = ordered[current_index + 1]
+    return _NextConceptSelection(
+        concept=target,
+        rationale_detail=f"used curriculum order fallback to {target.concept_id}",
+    )
 
 
 def _lower_difficulty(difficulty: str) -> str:

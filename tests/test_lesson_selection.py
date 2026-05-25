@@ -149,6 +149,52 @@ def test_lesson_selector_branch_falls_back_to_repeat_without_target():
     assert decision.selection_rationale.startswith("Branch action fell back to repeat")
 
 
+def test_lesson_selector_continue_follows_explicit_next_concept_link():
+    selector = default_lesson_selector()
+    curriculum = _curriculum_with_next_concept_jump()
+
+    decision = selector.select_next_lesson(
+        LessonSelectionContext(
+            curriculum=curriculum,
+            last_assignment=_assignment(
+                "concept_1",
+                Difficulty.STANDARD,
+                "standard_001",
+            ),
+            last_assessment=_assessment(NextAction.CONTINUE),
+        )
+    )
+
+    assert decision.concept.concept_id == "concept_3"
+    assert decision.variant.variant_id == "guided_003"
+    assert "followed concept graph next_concepts to concept_3" in (
+        decision.selection_rationale
+    )
+
+
+def test_lesson_selector_accelerate_follows_explicit_next_concept_link():
+    selector = default_lesson_selector()
+    curriculum = _curriculum_with_next_concept_jump()
+
+    decision = selector.select_next_lesson(
+        LessonSelectionContext(
+            curriculum=curriculum,
+            last_assignment=_assignment(
+                "concept_1",
+                Difficulty.STANDARD,
+                "standard_001",
+            ),
+            last_assessment=_assessment(NextAction.ACCELERATE),
+        )
+    )
+
+    assert decision.concept.concept_id == "concept_3"
+    assert decision.variant.variant_id == "challenge_003"
+    assert "followed concept graph next_concepts to concept_3" in (
+        decision.selection_rationale
+    )
+
+
 def test_lesson_selector_continues_terminal_concept_to_same_concept():
     selector = default_lesson_selector()
     curriculum = _curriculum()
@@ -218,6 +264,72 @@ def _curriculum() -> Curriculum:
             second.concept_id: second,
         },
         branch_fallbacks={"global_remediation": ["concept_1"]},
+    )
+
+
+def _curriculum_with_next_concept_jump() -> Curriculum:
+    first = Concept(
+        concept_id="concept_1",
+        title="Concept 1",
+        order=1,
+        default_difficulty=Difficulty.STANDARD,
+        learner_command=None,
+        rubric_ids=["rust_correctness"],
+        next_concepts=["concept_3"],
+        variants=[
+            LessonVariant(
+                variant_id="standard_001",
+                difficulty=Difficulty.STANDARD,
+                prompt="standard",
+                success_criteria=["done"],
+            ),
+        ],
+    )
+    second = Concept(
+        concept_id="concept_2",
+        title="Concept 2",
+        order=2,
+        default_difficulty=Difficulty.GUIDED,
+        learner_command=None,
+        rubric_ids=["rust_correctness"],
+        variants=[
+            LessonVariant(
+                variant_id="guided_002",
+                difficulty=Difficulty.GUIDED,
+                prompt="guided",
+                success_criteria=["done"],
+            ),
+        ],
+    )
+    third = Concept(
+        concept_id="concept_3",
+        title="Concept 3",
+        order=3,
+        default_difficulty=Difficulty.GUIDED,
+        learner_command=None,
+        rubric_ids=["rust_correctness"],
+        variants=[
+            LessonVariant(
+                variant_id="guided_003",
+                difficulty=Difficulty.GUIDED,
+                prompt="guided graph target",
+                success_criteria=["done"],
+            ),
+            LessonVariant(
+                variant_id="challenge_003",
+                difficulty=Difficulty.CHALLENGE,
+                prompt="challenge graph target",
+                success_criteria=["done"],
+            ),
+        ],
+    )
+    return Curriculum(
+        curriculum_version="test",
+        concepts={
+            first.concept_id: first,
+            second.concept_id: second,
+            third.concept_id: third,
+        },
     )
 
 
