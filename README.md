@@ -30,7 +30,7 @@ This repository contains design documentation and a local Python implementation 
 - `rust_sensei.agent_workflow.write_agent_lesson_report` writes the per-assignment report from the prepared workspace, submitted attempt evidence, and canonical assessment result.
 - `rust_sensei.agent_workspace.prepare_lesson_workspace` creates or reuses the suggested local lesson directory and starter Cargo files without overwriting learner code.
 - `rust_sensei.agent_report.write_lesson_report` writes a stable per-assignment Markdown report after assessment with the canonical Rust Sensei assessment embedded as JSON. Human-readable report sections redact obvious local absolute path fragments while preserving canonical assessment JSON.
-- Adaptive lesson selection handlers live in `rust_sensei/domain/lesson_selection.py`, including branch target resolution and deterministic prompt variant rotation.
+- Adaptive lesson selection handlers live in `rust_sensei/domain/lesson_selection.py`, including `next_concepts` graph traversal, branch target resolution, and deterministic prompt variant rotation.
 - Curriculum seed loading validates the current v1 shape, including nonblank required fields, known difficulty bands, unique concept order values, known rubric ids, richer concept graph metadata, valid concept references, valid branch target lists, completion thresholds, workspace artifact policies, and lesson command metadata. Invalid or unreadable custom curriculum files are returned as structured storage errors.
 - Assessment service implements `submit_attempt` and an initial `assess_attempt` flow with persisted idempotent assessment records, nonblank evidence validation, strict command metadata source/risk validation, artifact size limits, truncation-reason checks, and secret-bearing path rejection.
 - Deterministic rubric scoring, confidence measuring, confidence explanations, and ordered next-step rules live in `rust_sensei/domain/scoring.py`. The v1 scorer can emit high-confidence branches for repeated compiler failures and problem-solving gaps when Rust syntax evidence is strong.
@@ -181,7 +181,7 @@ Latest known verification:
 
 Recommended implementation order:
 
-1. Use richer concept graph metadata in adaptive selection policies when ready.
+1. Apply remaining concept graph metadata in adaptive selection policies when ready, especially completion thresholds and prerequisite-aware reopening.
 2. Add fuller agent/client examples around the new workflow helper if a target MCP client needs setup-specific glue.
 3. Continue opportunistic validation and privacy hardening as new storage, report, or workflow surfaces are added.
 

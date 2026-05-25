@@ -4,7 +4,7 @@
 
 This document defines how Rust Sensei adapts lessons based on learner performance.
 
-The target curriculum is a concept graph. The implemented v1 curriculum is an ordered concept model with prompt variants, rubric ids, learner commands, branch target metadata, prerequisites, competencies, baseline tasks, stretch signals, struggle signals, next concepts, and completion thresholds. Selection policy use of the richer graph metadata can expand incrementally.
+The target curriculum is a concept graph. The implemented v1 curriculum is an ordered concept model with prompt variants, rubric ids, learner commands, branch target metadata, prerequisites, competencies, baseline tasks, stretch signals, struggle signals, next concepts, and completion thresholds. Selection policy uses `next_concepts` for continue and accelerate actions; additional use of richer graph metadata can expand incrementally.
 
 Primary requirement links:
 
@@ -93,7 +93,7 @@ class ConceptSpec:
     completion_thresholds: dict[str, float]
 ```
 
-The implemented v1 `Concept` shape supports the graph metadata fields while lesson selection still uses a conservative subset of them:
+The implemented v1 `Concept` shape supports the graph metadata fields. Lesson selection uses `next_concepts` for continue and accelerate actions, branch targets for branch actions, and a conservative subset of the remaining fields:
 
 ```python
 @dataclass(frozen=True)
@@ -282,8 +282,8 @@ Required v1 handlers:
 | --- | --- | --- |
 | `simplify` | `select_simplified_lesson` | Same concept, lower difficulty |
 | `repeat` | `select_repeat_variant` | Same concept, same difficulty, new variant |
-| `continue` | `select_next_concept` | Next concept, default difficulty adjusted by recent score and confidence |
-| `accelerate` | `select_accelerated_concept` | Next unmastered concept, challenge difficulty |
+| `continue` | `select_next_concept` | First `next_concepts` graph target, or curriculum order fallback, at the target concept's default difficulty |
+| `accelerate` | `select_accelerated_concept` | First `next_concepts` graph target, or curriculum order fallback, at challenge difficulty |
 | `branch` | `select_branch_lesson` | Branch target selected from assessment evidence |
 
 The `LessonSelector` should be the only service that resolves `next_action` to behavior.

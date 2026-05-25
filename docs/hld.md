@@ -43,7 +43,7 @@ This design supports these primary requirements:
 ### 2.3 Adaptive Curriculum
 
 - `FR-05`: The curriculum must be represented as structured concept data, not as a fixed list of static lesson scripts. The implemented v1 seed uses an ordered concept model with variants, rubric ids, learner commands, branch targets, prerequisites, competency goals, baseline task criteria, stretch signals, struggle signals, next concepts, and completion thresholds.
-- `FR-05`: Selection policy use of richer concept graph metadata can expand incrementally while preserving deterministic v1 behavior.
+- `FR-05`: Selection policy now uses `next_concepts` graph links for continue and accelerate actions. Further use of richer concept graph metadata can expand incrementally while preserving deterministic v1 behavior.
 - `FR-05`: Lesson content must vary based on learner profile, assessment history, confidence, and current concept.
 - `FR-05`: If a learner demonstrates competence beyond the prompt, Rust Sensei must support skipping, compressing, or increasing difficulty for future lessons.
 - `FR-05`: If a learner struggles, Rust Sensei must support smaller prompts, repeated practice, and targeted remediation.
