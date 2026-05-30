@@ -1,6 +1,6 @@
 # Rust Sensei
 
-Rust Sensei is a planned local-first MCP server for an adaptive Rust learning agent.
+Rust Sensei is a local-first MCP server for an adaptive Rust learning agent.
 
 The learner writes Rust code in VS Code. Codex operates in the same workspace, calls Rust Sensei through MCP, verifies work when asked, and presents coaching feedback. Rust Sensei owns learner memory, lesson planning, assessment, progress tracking, and next-step recommendations.
 
@@ -16,7 +16,7 @@ The learner writes Rust code in VS Code. Codex operates in the same workspace, c
 
 ## Current Status
 
-This repository contains design documentation and a local Python implementation in progress.
+This repository contains design documentation and a local Python v1 implementation. The core local MCP/server flow is implemented; remaining v1-release work is client setup documentation, packaging polish, and environment validation on target machines.
 
 - Package metadata and CLI entrypoint.
 - Typed DTO and domain models for session, setup, lesson assignment, curriculum, attempt submission, and assessment flows.
@@ -75,6 +75,7 @@ Known limitations:
 - `assess_attempt` uses deterministic scoring only. It does not call an LLM.
 - Opening the suggested lesson file or directory in VS Code remains an agent/client responsibility, not server behavior. The agent workflow helper accepts an opener callback and includes `open_with_vscode` for clients that explicitly choose that integration.
 - v1 still supports only `local-default` as the learner id.
+- `rust-sensei doctor` requires a supported Python, `rustc`, Cargo, and a writable state directory on the active shell `PATH` before it reports `ready: true`.
 
 ## Current MCP Verification
 
@@ -174,7 +175,7 @@ If `python3 --version` still shows the system Python `3.9.6`, run `source ~/.zsh
 
 Latest known verification:
 
-- `257` tests passed under Python `3.14.5` in `.venv`.
+- `259` tests passed under Python `3.14.5` in `.venv`.
 - Real FastMCP integration coverage passed with `mcp==1.27.1`.
 - Latest coverage passed at `94.29%`.
 
@@ -182,8 +183,9 @@ Latest known verification:
 
 Recommended implementation order:
 
-1. Add Claude Code, Cursor, or other client examples around the workflow helper when a target client needs setup-specific glue.
-2. Continue opportunistic validation and privacy hardening as new storage, report, or workflow surfaces are added.
+1. Add full client setup docs for Codex MCP configuration and then Claude Code, Cursor, or other clients as needed.
+2. Add packaging/install polish for `pipx` or `uv tool` usage before a tagged release.
+3. Continue opportunistic validation and privacy hardening as new storage, report, or workflow surfaces are added.
 
 ## Documents
 
@@ -222,8 +224,6 @@ flowchart LR
 
 ## Future Work
 
-- Complete the Python MCP server tool surface.
 - Add an LLM-assisted assessment provider behind the assessment service once the deterministic baseline and idempotency contract are stable.
-- Add Codex setup instructions.
-- Add Claude Code setup instructions.
+- Add richer client examples after the Codex workflow helper, including Claude Code and Cursor setup.
 - Add optional SQLite storage after the JSON proof of concept.

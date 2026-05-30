@@ -75,7 +75,7 @@ This design supports these primary requirements:
 - `FR-12`: Codex-specific setup belongs in documentation and config examples, not in core server logic.
 - `FR-12`: Claude Code and other MCP clients should be able to call the same tools without server changes.
 
-Planned MCP tools:
+v1 MCP tools:
 
 - `start_session`: Create or resume the active learner session.
 - `get_next_lesson`: Return the active lesson assignment or create a new assignment when progression requires it.
@@ -86,19 +86,19 @@ Planned MCP tools:
 - `update_learner_signal`: Record non-code signals such as confusion, confidence, or self-reported blockers.
 - `get_setup_status`: Return setup checks and missing prerequisites.
 
-Planned MCP resources:
+v1 MCP resources:
 
 - `rust-sensei://profile/active`: Read-only active learner profile.
 - `rust-sensei://progress/summary`: Read-only progress summary derived from canonical events.
 - `rust-sensei://curriculum/concepts`: Read-only curriculum concept inventory.
 
-Planned MCP prompts:
+v1 MCP prompts:
 
 - `rust_sensei_tutor`: General tutor behavior and coaching rules.
 - `rust_sensei_attempt_review`: Attempt-review behavior using Rust Sensei assessment output.
 - `rust_sensei_stuck_coaching`: Coaching behavior when the learner is blocked or confused.
 
-Tools, resources, and prompts are v1 requirements. Richer variants can be added after the MCP server skeleton works.
+Tools, resources, and prompts are v1 requirements. The current implementation exposes the listed tools, resources, and prompts; richer variants can be added after v1.
 
 ### 2.7 Local State And Setup
 

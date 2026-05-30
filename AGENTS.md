@@ -2,13 +2,13 @@
 
 ## Project Snapshot
 
-Rust Sensei is a planned local-first MCP server for an adaptive Rust learning agent. The repository contains design documentation and a local Python implementation in progress.
+Rust Sensei is a local-first MCP server for an adaptive Rust learning agent. The repository contains design documentation and a local Python v1 implementation.
 
 Primary sources of truth:
 
-- `README.md`: project overview, goals, current status, planned architecture.
+- `README.md`: project overview, goals, current status, architecture, and release-readiness notes.
 - `docs/hld.md`: high-level requirements and system design.
-- `docs/lld-mcp-server.md`: planned Python MCP server package layout, tool contracts, storage boundaries, and CLI shape.
+- `docs/lld-mcp-server.md`: Python MCP server package layout, tool contracts, storage boundaries, and CLI shape.
 - `docs/lld-ai-agent.md`: how Codex and other MCP agents should interact with Rust Sensei.
 - `docs/lld-adaptive-lessons.md`: adaptive curriculum and lesson selection design.
 - `docs/lld-confidence-measuring.md`: confidence scoring and skill update dampening design.
@@ -16,7 +16,7 @@ Primary sources of truth:
 
 ## Current State
 
-- This is a documentation-first repo with an initial Python package.
+- The core local MCP/server v1 flow is implemented. Remaining v1-release work is client setup documentation, packaging polish, and target-machine environment validation.
 - Existing code covers package metadata, DTO/domain models, JSON learner profile storage, lesson assignment storage, curriculum seed loading, attempt storage, assessment storage, progress event storage, learner signal storage, session service, lesson service, assessment service, progress service, setup service, CLI entrypoint, and tests.
 - Implemented flows: `start_session`, `get_learner_profile`, `get_next_lesson`, `submit_attempt`, `assess_attempt`, `get_progress_summary`, `update_learner_signal`, and `get_setup_status`.
 - `assess_attempt` persists idempotent assessment records, returns deterministic rubric scores, returns confidence output with explanation details, records missing evidence, marks assignments assessed, and updates the learner skill model with confidence dampening.
@@ -39,15 +39,16 @@ Primary sources of truth:
 - Implemented MCP resources expose active profile, active progress summary, and curriculum concept inventory.
 - Implemented MCP prompts expose tutor behavior, attempt review, and stuck-state coaching guidance.
 - MCP handler registration is unit-tested through `register_handlers` with a fake registrar. Registered MCP tools expose direct typed parameters rather than an opaque `payload` wrapper. Real FastMCP integration tests cover registration, schemas, tool flows, resources, prompts, and structured validation errors with `mcp==1.27.1`.
-- Do not assume Rust crate support, full MCP tool wiring, hosted behavior, multi-learner support, or a complete release pipeline exists until the files are present.
+- Do not assume Rust crate support, hosted behavior, multi-learner support, packaged release artifacts, or a complete release pipeline exists until the files are present.
 - If adding implementation, create the missing project structure deliberately and update docs when behavior diverges from the design.
 
 ## Handoff Snapshot
 
 Use this order when continuing implementation:
 
-1. Add Claude Code, Cursor, or other client examples around the workflow helper when a target client needs setup-specific glue.
-2. Continue opportunistic validation and privacy hardening as new storage, report, or workflow surfaces are added.
+1. Add full client setup docs for Codex MCP configuration and then Claude Code, Cursor, or other clients as needed.
+2. Add packaging/install polish for `pipx` or `uv tool` usage before a tagged release.
+3. Continue opportunistic validation and privacy hardening as new storage, report, or workflow surfaces are added.
 
 Important current behavior:
 
@@ -130,7 +131,7 @@ rust_sensei/
 
 ## MCP Tool Contract Expectations
 
-Planned v1 tools:
+Implemented v1 tools:
 
 - `start_session`
 - `get_next_lesson`
@@ -189,8 +190,9 @@ Notes:
 - The project target is Python 3.11+. Do not lower `python_requires` only to satisfy an older local system Python.
 - If `python3 --version` shows `/usr/bin/python3` era Python `3.9.6`, source `~/.zshrc` or open a new shell before creating `.venv`.
 - Agents should run pip, setup diagnostics, tests, and coverage through `.venv/bin/python`; do not assume `python`, `pip`, or `pytest` are on the shell `PATH` or that the virtual environment is activated.
-- Latest known local verification: `257` tests passed under Python `3.14.5` in `.venv`; latest coverage passed with `94.29%`.
+- Latest known local verification: `259` tests passed under Python `3.14.5` in `.venv`; latest coverage passed with `94.29%`.
 - Real MCP SDK verification is no longer blocked locally after sourcing `~/.zshrc`, using Homebrew Python `3.14.5`, creating `.venv`, and installing `.[dev-mcp]`. `mcp==1.27.1` imported successfully, and FastMCP tests cover tools, resources, prompts, direct-parameter schemas, runtime tool flows, resource reads, prompt reads, and structured validation errors.
+- `rust-sensei doctor --json` reports `ready: true` only when Python, `rustc`, Cargo, and the configured state directory are available from the active shell environment.
 - For learner Rust workspaces outside this server, allowed verification commands are limited by the AI Agent LLD to standard Cargo checks or lesson-provided commands.
 
 ## Documentation Practices

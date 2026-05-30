@@ -375,4 +375,4 @@ Diagram description:
 - Add VS Code task snippets for common Cargo commands.
 - Add debugger practice instructions once lessons reach debugging concepts.
 - Add current-file submission helpers if a client supports editor context directly.
-- Add MCP response fields for suggested assignment workspace paths if server-owned path planning becomes necessary.
+- Add richer editor-context helpers if a client can safely provide current-file or selected-text context.
