@@ -43,7 +43,7 @@ This design supports these primary requirements:
 ### 2.3 Adaptive Curriculum
 
 - `FR-05`: The curriculum must be represented as structured concept data, not as a fixed list of static lesson scripts. The implemented v1 seed uses an ordered concept model with variants, rubric ids, learner commands, branch targets, prerequisites, competency goals, baseline task criteria, stretch signals, struggle signals, next concepts, and completion thresholds.
-- `FR-05`: Selection policy now uses `next_concepts` graph links for continue and accelerate actions. Further use of richer concept graph metadata can expand incrementally while preserving deterministic v1 behavior.
+- `FR-05`: Selection policy now uses `next_concepts` graph links for continue and accelerate actions. Deterministic scoring uses configured concept `completion_thresholds` to gate continue and accelerate decisions. Further use of richer concept graph metadata can expand incrementally while preserving deterministic v1 behavior.
 - `FR-05`: Lesson content must vary based on learner profile, assessment history, confidence, and current concept.
 - `FR-05`: If a learner demonstrates competence beyond the prompt, Rust Sensei must support skipping, compressing, or increasing difficulty for future lessons.
 - `FR-05`: If a learner struggles, Rust Sensei must support smaller prompts, repeated practice, and targeted remediation.
@@ -171,11 +171,11 @@ Core data concepts:
 
 - Learner profile: learner id, initial Rust level, current skill estimates, preferences, and active path.
 - Skill model: Rust concept scores, general programming scores, confidence, and evidence.
-- Concept graph: current v1 stores ordered Rust concepts with variants, rubric ids, learner commands, branch targets, prerequisites, competency goals, baseline task criteria, stretch signals, struggle signals, next concepts, and completion thresholds. Future work can apply this metadata more deeply in adaptive policies.
+- Concept graph: current v1 stores ordered Rust concepts with variants, rubric ids, learner commands, branch targets, prerequisites, competency goals, baseline task criteria, stretch signals, struggle signals, next concepts, and completion thresholds. Current adaptive policy uses graph links, completion thresholds, and direct prerequisite reopening when later high-confidence evidence weakens a previously completed or skipped prerequisite.
 - Lesson assignment: assignment id, lesson id, concept id, difficulty, variant id, selection rationale, curriculum version, status, and timestamps.
 - Lesson attempt: assignment id, code, outputs, notes, timestamps, and workspace references.
 - Assessment result: attempt id, scores, evidence, feedback, confidence, scoring version, and next-step action.
-- Progress event: append-only record of assignment, attempt, assessment, abandonment, or view events in the implemented v1 flow. Event types also define completion, repeat, simplification, acceleration, branch, skip, and reopen events for future granular adaptive telemetry.
+- Progress event: append-only record of assignment, attempt, assessment, reopening, abandonment, or view events in the implemented v1 flow. Event types also define completion, repeat, simplification, acceleration, branch, and skip events for granular adaptive telemetry.
 - Repository interfaces: learner, curriculum, assessment, and session persistence boundaries.
 - JSON storage adapter: v1 implementation of repository interfaces.
 

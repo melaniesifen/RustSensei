@@ -4,7 +4,7 @@
 
 This document defines how Rust Sensei adapts lessons based on learner performance.
 
-The target curriculum is a concept graph. The implemented v1 curriculum is an ordered concept model with prompt variants, rubric ids, learner commands, branch target metadata, prerequisites, competencies, baseline tasks, stretch signals, struggle signals, next concepts, and completion thresholds. Selection policy uses `next_concepts` for continue and accelerate actions; additional use of richer graph metadata can expand incrementally.
+The target curriculum is a concept graph. The implemented v1 curriculum is an ordered concept model with prompt variants, rubric ids, learner commands, branch target metadata, prerequisites, competencies, baseline tasks, stretch signals, struggle signals, next concepts, and completion thresholds. Selection policy uses `next_concepts` for continue and accelerate actions, can reopen direct prerequisites that were previously completed or skipped, and deterministic scoring gates continue and accelerate decisions on configured `completion_thresholds`; additional use of richer graph metadata can expand incrementally.
 
 Primary requirement links:
 
@@ -93,7 +93,7 @@ class ConceptSpec:
     completion_thresholds: dict[str, float]
 ```
 
-The implemented v1 `Concept` shape supports the graph metadata fields. Lesson selection uses `next_concepts` for continue and accelerate actions, branch targets for branch actions, and a conservative subset of the remaining fields:
+The implemented v1 `Concept` shape supports the graph metadata fields. Lesson selection uses `next_concepts` for continue and accelerate actions, direct prerequisites for reopening, branch targets for branch actions, deterministic scoring uses `completion_thresholds` for thresholded concepts, and selection policy otherwise uses a conservative subset of the remaining fields:
 
 ```python
 @dataclass(frozen=True)
@@ -307,7 +307,7 @@ Placement skip behavior:
 - Target behavior: each provisional skip creates a `provisionally_skipped` progress event.
 - Target behavior: confirming a skip creates a `skip_confirmed` progress event.
 - Target behavior: later assessment evidence may confirm the skip or reopen the concept.
-- Target behavior: reopening a skipped concept creates a `reopened` progress event.
+- Implemented v1 behavior: reopening a skipped concept creates a `reopened` progress event in the same JSON transaction as the new reopened assignment.
 - Current v1 behavior: `start_session` records `provisionally_skipped` progress events in the same JSON transaction as profile creation when `proficient` or `expert` placement starts beyond earlier concepts.
 
 ### 4.6 Next-Step Rule Set
@@ -377,14 +377,30 @@ NEXT_STEP_RULES = [
             a.rust_score >= 0.85
             and a.general_programming_score >= 0.80
             and a.confidence >= 0.80
+            and a.completion_thresholds_met
         ),
-        reason="Rust, general programming, and confidence scores meet acceleration thresholds.",
+        reason="Rust, general programming, confidence, and concept completion thresholds meet acceleration requirements.",
+    ),
+    NextStepRule(
+        rule_id="concept_completion_continue",
+        action="continue",
+        branch_id=None,
+        predicate=lambda a: (
+            a.completion_thresholds_defined
+            and a.completion_thresholds_met
+            and a.confidence >= 0.60
+        ),
+        reason="Concept rubric scores and confidence meet completion thresholds.",
     ),
     NextStepRule(
         rule_id="expected_progress_continue",
         action="continue",
         branch_id=None,
-        predicate=lambda a: a.rust_score >= 0.70 and a.confidence >= 0.60,
+        predicate=lambda a: (
+            not a.completion_thresholds_defined
+            and a.rust_score >= 0.70
+            and a.confidence >= 0.60
+        ),
         reason="Rust score and confidence meet continuation thresholds.",
     ),
 ]
@@ -415,14 +431,14 @@ Branch target semantics:
 
 Concept completion is based on rubric scores and confidence.
 
-Default v1 completion rules:
+Implemented v1 completion rules:
 
 - A standard concept is complete when all required rubric dimensions meet the concept threshold and each required dimension has confidence at least `0.60`.
 - A challenge-level attempt can complete the concept when Rust correctness is at least `0.85`, general programming score is at least `0.80`, and overall confidence is at least `0.70`.
 - A completed concept can be reopened if later evidence shows a required rubric dimension below `0.50` with confidence at least `0.60`.
 - Reopened concepts return through the normal selection handler registry.
 
-Current v1 writes the canonical `assessed` event plus one adaptive outcome event during the same assessment transaction: `completed`, `repeated`, `simplified`, `accelerated`, or `branched`. Reopening remains target behavior and should emit a `reopened` progress event when implemented.
+Current v1 scoring enforces configured `completion_thresholds` before returning `continue` or `accelerate`; concepts without thresholds keep the generic Rust-score continuation rule. Current v1 writes the canonical `assessed` event plus one adaptive outcome event during the same assessment transaction: `completed`, `repeated`, `simplified`, `accelerated`, or `branched`. Lesson selection reopens a direct prerequisite when the prerequisite's latest lifecycle status is completed, accelerated, provisionally skipped, or skip-confirmed, and the latest assessment shows a required prerequisite rubric below `0.50` with confidence at least `0.60`. Reopening writes a `reopened` event in the same transaction as the new assignment, and progress summaries remove reopened concepts from the skipped list.
 
 ### 4.8 Assignment History And Prompt Variants
 

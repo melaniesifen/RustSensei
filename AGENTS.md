@@ -20,7 +20,7 @@ Primary sources of truth:
 - Existing code covers package metadata, DTO/domain models, JSON learner profile storage, lesson assignment storage, curriculum seed loading, attempt storage, assessment storage, progress event storage, learner signal storage, session service, lesson service, assessment service, progress service, setup service, CLI entrypoint, and tests.
 - Implemented flows: `start_session`, `get_learner_profile`, `get_next_lesson`, `submit_attempt`, `assess_attempt`, `get_progress_summary`, `update_learner_signal`, and `get_setup_status`.
 - `assess_attempt` persists idempotent assessment records, returns deterministic rubric scores, returns confidence output with explanation details, records missing evidence, marks assignments assessed, and updates the learner skill model with confidence dampening.
-- `get_next_lesson` can use the latest assessed assignment and stored assessment action to create the next active assignment through the lesson selector registry. Continue and accelerate actions prefer the current concept's `next_concepts` graph links before falling back to curriculum order.
+- `get_next_lesson` can use the latest assessed assignment and stored assessment action to create the next active assignment through the lesson selector registry. Continue and accelerate actions prefer the current concept's `next_concepts` graph links before falling back to curriculum order. Direct prerequisites that were previously completed or skipped can be reopened when later high-confidence evidence shows a weak required rubric. Deterministic scoring gates continue and accelerate decisions on concept `completion_thresholds` when thresholds are configured.
 - `get_next_lesson` resolves stored `branch` actions with `branch_id` through concept-level `branch_targets`, then curriculum-level `branch_fallbacks`, then explicit repeat fallback. The deterministic v1 scorer can emit high-confidence branches for repeated compiler failures and problem-solving gaps when Rust syntax evidence is strong.
 - `get_next_lesson` rotates deterministic unused prompt variants for the selected concept and difficulty before reusing the first matching variant.
 - `get_next_lesson` can abandon the active assignment when `abandon_active_assignment` is true and a non-empty `abandonment_reason` is supplied. `force_new_variant` is supported only with abandonment while an active assignment exists.
@@ -45,20 +45,19 @@ Primary sources of truth:
 
 Use this order when continuing implementation:
 
-1. Apply remaining concept graph metadata in adaptive selection policies when ready, especially completion thresholds and prerequisite-aware reopening.
-2. Add fuller agent/client examples around the workflow helper if a target MCP client needs setup-specific glue.
-3. Continue opportunistic validation and privacy hardening as new storage, report, or workflow surfaces are added.
+1. Add fuller agent/client examples around the workflow helper if a target MCP client needs setup-specific glue.
+2. Continue opportunistic validation and privacy hardening as new storage, report, or workflow surfaces are added.
 
 Important current behavior:
 
 - `start_session` creates the profile only after a valid `RustLevel` placement.
-- `get_next_lesson` creates an active assignment, reuses active assignments, abandons active assignments with a required reason, returns pending assessment after an attempt, and creates a post-assessment assignment from `repeat`, `simplify`, `continue`, `accelerate`, or `branch`. The deterministic v1 scorer emits `branch` for high-confidence repeated compiler failures and for high-confidence problem-solving gaps when Rust syntax evidence is strong.
+- `get_next_lesson` creates an active assignment, reuses active assignments, abandons active assignments with a required reason, returns pending assessment after an attempt, reopens weak direct prerequisites when the prerequisite was previously completed or skipped, and creates a post-assessment assignment from `repeat`, `simplify`, `continue`, `accelerate`, or `branch`. The deterministic v1 scorer emits `branch` for high-confidence repeated compiler failures and for high-confidence problem-solving gaps when Rust syntax evidence is strong.
 - `get_next_lesson` includes `workspace_suggestion` for assignment responses. Pending-assessment responses have no assignment, no lesson plan, and no workspace suggestion.
 - Agent workflow helpers can prepare the suggested workspace, open the suggested path through a caller-provided opener such as VS Code, collect generated relative file paths and current lesson code into a `SubmitAttemptRequest`, and write the report after assessment. These helpers are not MCP tools and do not make the server control the editor.
 - Branch targets are configured in curriculum JSON with concept-level `branch_targets` and top-level `branch_fallbacks`. Target concept ids are validated when loading the curriculum.
-- The implemented curriculum model stores concept id, title, order, default difficulty, learner command, rubric ids, variants, branch targets, and richer graph metadata such as prerequisites, competency goals, baseline task, stretch/struggle signals, next concepts, and completion thresholds. Lesson selection uses `next_concepts` for continue/accelerate graph traversal, branch targets for branch actions, and variant history for deterministic prompt rotation.
+- The implemented curriculum model stores concept id, title, order, default difficulty, learner command, rubric ids, variants, branch targets, and richer graph metadata such as prerequisites, competency goals, baseline task, stretch/struggle signals, next concepts, and completion thresholds. Lesson selection uses `next_concepts` for continue/accelerate graph traversal, direct prerequisites for reopening, branch targets for branch actions, and variant history for deterministic prompt rotation. Scoring uses configured `completion_thresholds` to decide when thresholded concepts may continue or accelerate.
 - Placement selects the active starting concept and records `provisionally_skipped` events for earlier concepts when a learner starts as `proficient` or `expert`.
-- Assessment writes the canonical `assessed` progress event plus one adaptive outcome event derived from `next_action`: `completed`, `repeated`, `simplified`, `accelerated`, or `branched`.
+- Assessment writes the canonical `assessed` progress event plus one adaptive outcome event derived from `next_action`: `completed`, `repeated`, `simplified`, `accelerated`, or `branched`. Prerequisite reopening writes a `reopened` event in the same transaction as the new assignment.
 - Variant rotation uses prior assignments for the learner and selects the first unused variant for the target concept and difficulty. When all matching variants were used, it falls back to the first matching variant.
 - `submit_attempt` validates nonblank evidence, rejects invalid command metadata source/risk values through DTO validation, enforces artifact size limits and truncation reasons, rejects obvious secret-bearing file paths, saves attempts atomically with assignment status updates, and handles idempotent `client_request_id` retries inside the JSON lock.
 - `assess_attempt` validates attempt readiness, creates one assessment per attempt, handles repeat calls without changing state, uses deterministic scoring from `domain/scoring.py`, and applies confidence-dampened skill updates from `domain/skill_update.py`.
@@ -189,7 +188,7 @@ Notes:
 - The project target is Python 3.11+. Do not lower `python_requires` only to satisfy an older local system Python.
 - If `python3 --version` shows `/usr/bin/python3` era Python `3.9.6`, source `~/.zshrc` or open a new shell before creating `.venv`.
 - Agents should run pip, setup diagnostics, tests, and coverage through `.venv/bin/python`; do not assume `python`, `pip`, or `pytest` are on the shell `PATH` or that the virtual environment is activated.
-- Latest known local verification: `239` tests passed under Python `3.14.5` in `.venv`; latest coverage passed with `94.34%`.
+- Latest known local verification: `257` tests passed under Python `3.14.5` in `.venv`; latest coverage passed with `94.29%`.
 - Real MCP SDK verification is no longer blocked locally after sourcing `~/.zshrc`, using Homebrew Python `3.14.5`, creating `.venv`, and installing `.[dev-mcp]`. `mcp==1.27.1` imported successfully, and FastMCP tests cover tools, resources, prompts, direct-parameter schemas, runtime tool flows, resource reads, prompt reads, and structured validation errors.
 - For learner Rust workspaces outside this server, allowed verification commands are limited by the AI Agent LLD to standard Cargo checks or lesson-provided commands.
 
