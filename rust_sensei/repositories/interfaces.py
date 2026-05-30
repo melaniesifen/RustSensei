@@ -39,7 +39,10 @@ class AssignmentRepository(Protocol):
     def create_active_assignment_if_absent(
         self,
         assignment: LessonAssignment,
-        event_factory: Callable[[LessonAssignment], ProgressEvent] | None = None,
+        event_factory: (
+            Callable[[LessonAssignment], ProgressEvent | Iterable[ProgressEvent]]
+            | None
+        ) = None,
     ) -> tuple[LessonAssignment, bool]:
         ...
 

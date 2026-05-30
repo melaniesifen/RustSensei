@@ -202,6 +202,71 @@ def test_build_assessment_does_not_branch_without_high_confidence():
     assert assessment.branch_id is None
 
 
+def test_build_assessment_continues_when_completion_thresholds_are_met():
+    assessment = build_assessment(
+        attempt=AttemptSubmission(
+            attempt_id="attempt_1",
+            learner_id="local-default",
+            assignment_id="assign_1",
+            lesson_id="lesson_1",
+            client_request_id=None,
+            client_request_fingerprint=None,
+            workspace_root=None,
+            code="fn main() { println!(\"hello rust sensei\"); }",
+            compiler_output="Finished dev profile target(s) in 0.10s",
+            runtime_output="hello rust sensei",
+            submitted_at=_fixed_now(),
+        ),
+        concept=_concept(
+            ["rust_correctness", "compiler_error_handling"],
+            completion_thresholds={
+                "rust_correctness": 0.65,
+                "compiler_error_handling": 0.50,
+            },
+        ),
+        difficulty=Difficulty.INTRO,
+        now=_fixed_now(),
+    )
+
+    assert assessment.next_action == NextAction.CONTINUE
+    assert assessment.next_action_reason == (
+        "Concept rubric scores and confidence meet completion thresholds."
+    )
+
+
+def test_build_assessment_repeats_when_completion_threshold_is_not_met():
+    assessment = build_assessment(
+        attempt=AttemptSubmission(
+            attempt_id="attempt_1",
+            learner_id="local-default",
+            assignment_id="assign_1",
+            lesson_id="lesson_1",
+            client_request_id=None,
+            client_request_fingerprint=None,
+            workspace_root=None,
+            code="fn main() { println!(\"hello rust sensei\"); }",
+            compiler_output="Finished dev profile target(s) in 0.10s",
+            runtime_output="hello rust sensei",
+            submitted_at=_fixed_now(),
+        ),
+        concept=_concept(
+            ["rust_correctness", "compiler_error_handling"],
+            completion_thresholds={
+                "rust_correctness": 0.65,
+                "compiler_error_handling": 0.90,
+            },
+        ),
+        difficulty=Difficulty.INTRO,
+        now=_fixed_now(),
+    )
+
+    assert assessment.rubric_scores["rust_correctness"].score >= 0.70
+    assert assessment.rubric_scores["compiler_error_handling"].score < 0.90
+    assert assessment.confidence >= 0.60
+    assert assessment.next_action == NextAction.REPEAT
+    assert assessment.next_action_reason == "No higher-priority rule matched."
+
+
 def test_build_assessment_explains_missing_confidence_evidence():
     assessment = build_assessment(
         attempt=AttemptSubmission(
@@ -266,7 +331,10 @@ def test_validate_rubric_ids_rejects_unknown_rubric():
         validate_rubric_ids(["unknown"])
 
 
-def _concept(rubric_ids: list[str]) -> Concept:
+def _concept(
+    rubric_ids: list[str],
+    completion_thresholds: dict[str, float] | None = None,
+) -> Concept:
     return Concept(
         concept_id="concept_1",
         title="Concept",
@@ -274,6 +342,7 @@ def _concept(rubric_ids: list[str]) -> Concept:
         default_difficulty="intro",
         learner_command=None,
         rubric_ids=rubric_ids,
+        completion_thresholds=completion_thresholds or {},
         variants=[
             LessonVariant(
                 variant_id="intro_001",

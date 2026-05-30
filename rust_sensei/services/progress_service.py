@@ -193,15 +193,25 @@ class ProgressService:
         events: Iterable[ProgressEvent],
         context: _ProgressSummaryContext,
     ) -> list[str]:
+        skipped_events = {
+            ProgressEventType.PROVISIONALLY_SKIPPED,
+            ProgressEventType.SKIP_CONFIRMED,
+        }
+        latest_status_by_concept_id: dict[str, ProgressEventType] = {}
+        for event in events:
+            concept_id = event.details.get("concept_id")
+            if (
+                not isinstance(concept_id, str)
+                or concept_id in latest_status_by_concept_id
+            ):
+                continue
+            if event.event_type in skipped_events | {ProgressEventType.REOPENED}:
+                latest_status_by_concept_id[concept_id] = event.event_type
+
         concept_ids = {
-            str(event.details["concept_id"])
-            for event in events
-            if event.event_type
-            in {
-                ProgressEventType.PROVISIONALLY_SKIPPED,
-                ProgressEventType.SKIP_CONFIRMED,
-            }
-            and "concept_id" in event.details
+            concept_id
+            for concept_id, event_type in latest_status_by_concept_id.items()
+            if event_type in skipped_events
         }
         return _sort_concept_ids(concept_ids, context.order_by_concept_id)
 

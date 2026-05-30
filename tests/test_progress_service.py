@@ -239,6 +239,35 @@ def test_get_progress_summary_derives_skipped_concepts_from_all_events(tmp_path)
     )
 
 
+def test_get_progress_summary_removes_reopened_concepts_from_skipped_list(tmp_path):
+    repositories = JsonRepositoryFactory(tmp_path)
+    session_service = SessionService(
+        learner_repository=repositories.learner_repository(),
+        learner_signal_repository=repositories.learner_signal_repository(),
+        curriculum_repository=repositories.curriculum_repository(),
+        now=lambda: TEST_NOW,
+    )
+    progress_service = _progress_service(repositories)
+    session_service.start_session(StartSessionRequest(initial_rust_level=RustLevel.NEW))
+    repositories.progress_event_repository().save_event(
+        _progress_event(
+            ProgressEventType.PROVISIONALLY_SKIPPED,
+            concept_id=VARIABLES_CONCEPT_ID,
+        )
+    )
+    repositories.progress_event_repository().save_event(
+        _progress_event(
+            ProgressEventType.REOPENED,
+            concept_id=VARIABLES_CONCEPT_ID,
+        )
+    )
+
+    response = progress_service.get_progress_summary(GetProgressSummaryRequest())
+
+    assert response.skipped_concepts == []
+    assert response.recent_events[0].event_type == ProgressEventType.REOPENED.value
+
+
 def test_get_progress_summary_loads_curriculum_once(tmp_path):
     repositories = JsonRepositoryFactory(tmp_path)
     session_service = SessionService(

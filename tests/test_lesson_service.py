@@ -377,6 +377,49 @@ def test_get_next_lesson_branches_for_problem_solving_gap(tmp_path):
     )
 
 
+def test_get_next_lesson_reopens_skipped_prerequisite_on_weak_later_evidence(tmp_path):
+    session_service, lesson_service, assessment_service = _services(tmp_path)
+    repositories = JsonRepositoryFactory(tmp_path)
+    session_service.start_session(
+        StartSessionRequest(initial_rust_level=RustLevel.PROFICIENT)
+    )
+    first = lesson_service.get_next_lesson(GetNextLessonRequest())
+    assert first.assignment is not None
+    assert first.assignment.concept_id == TRAITS_CONCEPT_ID
+    submitted = assessment_service.submit_attempt(
+        SubmitAttemptRequest(
+            assignment_id=first.assignment.assignment_id,
+            code="fn main() {}",
+            compiler_output=SUCCESSFUL_CARGO_OUTPUT,
+            learner_notes="This compiles, but I am not confident in the idiomatic shape.",
+        )
+    )
+
+    assessment = assessment_service.assess_attempt(
+        AssessAttemptRequest(attempt_id=submitted.attempt_id)
+    )
+    response = lesson_service.get_next_lesson(GetNextLessonRequest())
+    events = repositories.progress_event_repository().list_recent_events(
+        TEST_LEARNER_ID,
+        limit=10,
+    )
+
+    assert assessment.assessment.rubric_scores["rust_idioms"].score < 0.50
+    assert assessment.assessment.rubric_scores["rust_idioms"].confidence >= 0.60
+    assert response.assignment is not None
+    assert response.assignment.assignment_id == ASSIGNMENT_ID_2
+    assert response.assignment.concept_id == OWNERSHIP_CONCEPT_ID
+    assert response.assignment.selection_rationale.startswith(
+        "Selected by prerequisite reopening after assessment"
+    )
+    assert [event.event_type for event in events[:2]] == [
+        ProgressEventType.REOPENED,
+        ProgressEventType.ASSIGNMENT_CREATED,
+    ]
+    assert events[0].assignment_id == ASSIGNMENT_ID_2
+    assert events[0].details["concept_id"] == OWNERSHIP_CONCEPT_ID
+
+
 def test_get_next_lesson_repeats_after_insufficient_evidence(tmp_path):
     session_service, lesson_service, assessment_service = _services(tmp_path)
     session_service.start_session(StartSessionRequest(initial_rust_level=RustLevel.NEW))

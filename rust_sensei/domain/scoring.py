@@ -25,6 +25,7 @@ INSUFFICIENT_EVIDENCE_CONFIDENCE_THRESHOLD = 0.45
 SIMPLIFY_RUST_SCORE_THRESHOLD = 0.50
 CONTINUE_RUST_SCORE_THRESHOLD = 0.70
 CONTINUE_CONFIDENCE_THRESHOLD = 0.60
+COMPLETION_RUBRIC_CONFIDENCE_THRESHOLD = 0.60
 ACCELERATE_RUST_SCORE_THRESHOLD = 0.85
 ACCELERATE_PROGRAMMING_SCORE_THRESHOLD = 0.80
 ACCELERATE_CONFIDENCE_THRESHOLD = 0.80
@@ -148,6 +149,8 @@ class _AssessmentSummary:
     problem_solving_score: float
     confidence: float
     recent_compile_failures: int
+    completion_thresholds_defined: bool
+    completion_thresholds_met: bool
 
 
 @dataclass(frozen=True)
@@ -214,18 +217,31 @@ NEXT_STEP_RULES = [
             and summary.general_programming_score
             >= ACCELERATE_PROGRAMMING_SCORE_THRESHOLD
             and summary.confidence >= ACCELERATE_CONFIDENCE_THRESHOLD
+            and summary.completion_thresholds_met
         ),
         reason=(
-            "Rust, general programming, and confidence scores meet "
-            "acceleration thresholds."
+            "Rust, general programming, confidence, and concept completion "
+            "thresholds meet acceleration requirements."
         ),
+    ),
+    _NextStepRule(
+        rule_id="concept_completion_continue",
+        action=NextAction.CONTINUE,
+        branch_id=None,
+        predicate=lambda summary: (
+            summary.completion_thresholds_defined
+            and summary.completion_thresholds_met
+            and summary.confidence >= CONTINUE_CONFIDENCE_THRESHOLD
+        ),
+        reason="Concept rubric scores and confidence meet completion thresholds.",
     ),
     _NextStepRule(
         rule_id="expected_progress_continue",
         action=NextAction.CONTINUE,
         branch_id=None,
         predicate=lambda summary: (
-            summary.rust_score >= CONTINUE_RUST_SCORE_THRESHOLD
+            not summary.completion_thresholds_defined
+            and summary.rust_score >= CONTINUE_RUST_SCORE_THRESHOLD
             and summary.confidence >= CONTINUE_CONFIDENCE_THRESHOLD
         ),
         reason="Rust score and confidence meet continuation thresholds.",
@@ -317,6 +333,12 @@ def build_assessment(
             ),
             confidence=confidence,
             recent_compile_failures=_compile_failure_count(attempt),
+            completion_thresholds_defined=bool(concept.completion_thresholds),
+            completion_thresholds_met=_completion_thresholds_met(
+                concept=concept,
+                rubric_scores=rubric_scores,
+                rubric_confidences=confidence_breakdown.rubric_confidences,
+            ),
         )
     )
     missing_evidence = _missing_evidence(attempt)
@@ -682,6 +704,24 @@ def _weighted_mean_required_rubrics(
             rubric_ids=missing,
         )
     return mean(rubric_confidences[rubric_id] for rubric_id in required_rubric_ids)
+
+
+def _completion_thresholds_met(
+    concept: Concept,
+    rubric_scores: dict[str, SkillScore],
+    rubric_confidences: dict[str, float],
+) -> bool:
+    if not concept.completion_thresholds:
+        return True
+
+    for rubric_id, threshold in concept.completion_thresholds.items():
+        score = rubric_scores.get(rubric_id)
+        confidence = rubric_confidences.get(rubric_id, 0.0)
+        if score is None or score.score < threshold:
+            return False
+        if confidence < COMPLETION_RUBRIC_CONFIDENCE_THRESHOLD:
+            return False
+    return True
 
 
 def _choose_next_action(

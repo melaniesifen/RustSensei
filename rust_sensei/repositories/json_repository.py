@@ -112,7 +112,10 @@ class JsonAssignmentRepository:
     def create_active_assignment_if_absent(
         self,
         assignment: LessonAssignment,
-        event_factory: Callable[[LessonAssignment], ProgressEvent] | None = None,
+        event_factory: (
+            Callable[[LessonAssignment], ProgressEvent | Iterable[ProgressEvent]]
+            | None
+        ) = None,
     ) -> tuple[LessonAssignment, bool]:
         def transaction(
             state: dict[str, Any],
@@ -130,7 +133,8 @@ class JsonAssignmentRepository:
             )
             state["lesson_assignments"].append(_assignment_to_state(created))
             if event_factory is not None:
-                _append_progress_event(state, event_factory(created))
+                for event in _progress_events(event_factory(created)):
+                    _append_progress_event(state, event)
             return (created, True), True
 
         return self._store.transact(transaction)

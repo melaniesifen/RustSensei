@@ -38,6 +38,17 @@ from rust_sensei.repositories.interfaces import (
 )
 
 LOGGER = logging.getLogger(__name__)
+REOPENABLE_PROGRESS_EVENTS = {
+    ProgressEventType.COMPLETED,
+    ProgressEventType.ACCELERATED,
+    ProgressEventType.PROVISIONALLY_SKIPPED,
+    ProgressEventType.SKIP_CONFIRMED,
+}
+REOPEN_RESET_PROGRESS_EVENTS = {
+    ProgressEventType.REOPENED,
+    ProgressEventType.REPEATED,
+    ProgressEventType.SIMPLIFIED,
+}
 
 
 class LessonService:
@@ -246,6 +257,9 @@ class LessonService:
                         assignment.learner_id
                     )
                 ),
+                reopenable_concept_ids=self._reopenable_concept_ids(
+                    assignment.learner_id
+                ),
             )
         )
 
@@ -273,22 +287,10 @@ class LessonService:
         )
         assignment, created = self._assignment_repository.create_active_assignment_if_absent(
             candidate,
-            event_factory=lambda created_assignment: ProgressEvent(
-                event_id="",
-                learner_id=created_assignment.learner_id,
-                event_type=ProgressEventType.ASSIGNMENT_CREATED,
-                assignment_id=created_assignment.assignment_id,
-                attempt_id=None,
-                assessment_id=None,
-                details={
-                    "concept_id": created_assignment.concept_id,
-                    "difficulty": created_assignment.difficulty,
-                    "variant_id": created_assignment.variant_id,
-                    "selection_rationale": created_assignment.selection_rationale,
-                },
-                previous_status=None,
-                new_status=AssignmentStatus.ACTIVE.value,
-                created_at=now,
+            event_factory=lambda created_assignment: _assignment_created_events(
+                created_assignment,
+                decision,
+                now,
             ),
         )
         if created:
@@ -371,6 +373,25 @@ class LessonService:
             )
         )
 
+    def _reopenable_concept_ids(self, learner_id: str) -> set[str]:
+        latest_status_by_concept_id: dict[str, ProgressEventType] = {}
+        for event in self._progress_event_repository.list_events_for_learner(learner_id):
+            concept_id = event.details.get("concept_id")
+            if (
+                not isinstance(concept_id, str)
+                or concept_id in latest_status_by_concept_id
+            ):
+                continue
+            lifecycle_events = REOPENABLE_PROGRESS_EVENTS | REOPEN_RESET_PROGRESS_EVENTS
+            if event.event_type in lifecycle_events:
+                latest_status_by_concept_id[concept_id] = event.event_type
+
+        return {
+            concept_id
+            for concept_id, event_type in latest_status_by_concept_id.items()
+            if event_type in REOPENABLE_PROGRESS_EVENTS
+        }
+
     @staticmethod
     def _validate_request(request: GetNextLessonRequest) -> None:
         if request.learner_id != ACTIVE_LEARNER_ID:
@@ -402,3 +423,51 @@ def _find_variant(concept: Concept, variant_id: str) -> LessonVariant:
 
 def _lesson_id(concept_id: str, variant_id: str) -> str:
     return f"{concept_id}:{variant_id}"
+
+
+def _assignment_created_events(
+    assignment: LessonAssignment,
+    decision: LessonSelectionDecision,
+    now: datetime,
+) -> list[ProgressEvent]:
+    details = {
+        "concept_id": assignment.concept_id,
+        "difficulty": assignment.difficulty,
+        "variant_id": assignment.variant_id,
+        "selection_rationale": assignment.selection_rationale,
+    }
+    events = [
+        ProgressEvent(
+            event_id="",
+            learner_id=assignment.learner_id,
+            event_type=ProgressEventType.ASSIGNMENT_CREATED,
+            assignment_id=assignment.assignment_id,
+            attempt_id=None,
+            assessment_id=None,
+            details=details,
+            previous_status=None,
+            new_status=AssignmentStatus.ACTIVE.value,
+            created_at=now,
+        )
+    ]
+    if decision.reopened_concept_id is not None:
+        reopened_details = {
+            "concept_id": decision.reopened_concept_id,
+            "reason": decision.reopen_reason or decision.selection_rationale,
+            "selection_rationale": decision.selection_rationale,
+        }
+        events.append(
+            ProgressEvent(
+                event_id="",
+                learner_id=assignment.learner_id,
+                event_type=ProgressEventType.REOPENED,
+                assignment_id=assignment.assignment_id,
+                attempt_id=None,
+                assessment_id=None,
+                details=reopened_details,
+                previous_status=None,
+                new_status=AssignmentStatus.ACTIVE.value,
+                created_at=now,
+            )
+        )
+    return events

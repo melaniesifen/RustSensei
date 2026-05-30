@@ -23,6 +23,7 @@ class LessonSelectionContext:
     last_assignment: LessonAssignment
     last_assessment: AssessmentResult
     prior_assignments: list[LessonAssignment] = field(default_factory=list)
+    reopenable_concept_ids: set[str] = field(default_factory=set)
 
 
 @dataclass(frozen=True)
@@ -31,6 +32,8 @@ class LessonSelectionDecision:
     variant: LessonVariant
     selection_rationale: str
     branch_id: str | None = None
+    reopened_concept_id: str | None = None
+    reopen_reason: str | None = None
 
 
 @dataclass(frozen=True)
@@ -50,7 +53,13 @@ class LessonSelector:
         self,
         context: LessonSelectionContext,
     ) -> LessonSelectionDecision:
-        handler = self._handlers.get(_next_action_or_none(context.last_assessment.next_action))
+        reopened = _reopened_prerequisite_decision(context)
+        if reopened is not None:
+            return reopened
+
+        handler = self._handlers.get(
+            _next_action_or_none(context.last_assessment.next_action)
+        )
         if handler is None:
             return select_repeat_variant(context)
         return handler(context)
@@ -260,6 +269,67 @@ def _next_concept(
         concept=target,
         rationale_detail=f"used curriculum order fallback to {target.concept_id}",
     )
+
+
+def _reopened_prerequisite_decision(
+    context: LessonSelectionContext,
+) -> LessonSelectionDecision | None:
+    if not context.reopenable_concept_ids:
+        return None
+
+    current_concept = context.curriculum.concepts[context.last_assignment.concept_id]
+    for prerequisite_id in current_concept.prerequisites:
+        if prerequisite_id not in context.reopenable_concept_ids:
+            continue
+        prerequisite = context.curriculum.concepts.get(prerequisite_id)
+        if prerequisite is None:
+            continue
+        weak_rubric = _weak_reopen_rubric(context.last_assessment, prerequisite)
+        if weak_rubric is None:
+            continue
+
+        rubric_id, score, confidence = weak_rubric
+        variant = _variant_for_difficulty(
+            concept=prerequisite,
+            difficulty=prerequisite.default_difficulty,
+            prior_assignments=context.prior_assignments,
+        )
+        reason = (
+            f"Reopened prerequisite {prerequisite_id} because rubric {rubric_id} "
+            f"scored {score:.2f} with confidence {confidence:.2f}."
+        )
+        return LessonSelectionDecision(
+            concept=prerequisite,
+            variant=variant,
+            reopened_concept_id=prerequisite_id,
+            reopen_reason=reason,
+            selection_rationale=(
+                "Selected by prerequisite reopening after assessment: "
+                f"{reason} Original next action was "
+                f"{context.last_assessment.next_action.value}: "
+                f"{context.last_assessment.next_action_reason}"
+            ),
+        )
+
+    return None
+
+
+def _weak_reopen_rubric(
+    assessment: AssessmentResult,
+    prerequisite: Concept,
+) -> tuple[str, float, float] | None:
+    required_rubric_ids = (
+        list(prerequisite.completion_thresholds)
+        if prerequisite.completion_thresholds
+        else prerequisite.rubric_ids
+    )
+    for rubric_id in required_rubric_ids:
+        score = assessment.rubric_scores.get(rubric_id)
+        if score is None:
+            continue
+        if score.score < 0.50 and score.confidence >= 0.60:
+            return rubric_id, score.score, score.confidence
+    return None
 
 
 def _lower_difficulty(difficulty: str) -> str:
