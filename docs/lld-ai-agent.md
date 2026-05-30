@@ -128,6 +128,8 @@ Required agent behavior:
 
 Implementation note: `rust_sensei.agent_workflow.prepare_agent_lesson` and `build_submit_attempt_request` provide this composition for Python-based agent integrations. The opener is caller-provided so VS Code control remains an agent/client action, not MCP server behavior.
 
+Codex-oriented example glue lives in `examples/codex_agent_workflow.py`. It keeps `workspace_root` out of submitted attempts by default, opens VS Code only when the caller opts in, and expects command evidence to be collected by the agent before `submit_attempt`.
+
 Recommended artifact layout:
 
 ```text
@@ -161,6 +163,8 @@ Implementation note: `rust_sensei.agent_workflow.write_agent_lesson_report` writ
 ### 4.6 Codex Setup
 
 Codex supports MCP server management through `codex mcp`.
+
+The Python helper example for Codex clients is `examples/codex_agent_workflow.py`.
 
 Example local stdio setup:
 

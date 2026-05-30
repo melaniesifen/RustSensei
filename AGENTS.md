@@ -29,6 +29,7 @@ Primary sources of truth:
 - `rust_sensei.agent_workflow.prepare_agent_lesson` composes `get_next_lesson` responses with workspace preparation, supports caller-provided editor openers, and returns generated relative paths for attempt evidence.
 - `rust_sensei.agent_workflow.build_submit_attempt_request` builds `SubmitAttemptRequest` DTOs from prepared lesson workspaces, generated file paths, current lesson file contents, command evidence, and learner/agent notes. It omits absolute `workspace_root` by default unless local diagnostics explicitly opt in.
 - `rust_sensei.agent_workflow.write_agent_lesson_report` writes report files from the prepared workspace, submitted attempt evidence, and canonical assessment output.
+- `examples/codex_agent_workflow.py` shows Codex-oriented glue around the workflow helper while keeping editor control and command execution agent-side.
 - `rust_sensei.agent_workspace.prepare_lesson_workspace` creates or reuses suggested lesson directories and starter Cargo files without overwriting learner code. Opening VS Code remains an agent/client action.
 - `rust_sensei.agent_report.write_lesson_report` writes a stable per-assignment `report.md` after assessment. The report includes assignment details, submitted artifacts, command lists, a readable assessment summary, and the canonical Rust Sensei assessment DTO as JSON. Human-readable report sections redact obvious local absolute path fragments while preserving canonical assessment JSON.
 - Progress events are persisted for placement skips, assignment creation/viewing, attempt submission, assessment, adaptive assessment outcomes, and assignment abandonment. Lifecycle events for profile creation with placement skips, assignment creation, attempt submission, assessment with its adaptive outcome, and abandonment are written in the same JSON transaction as the canonical state change.
@@ -45,7 +46,7 @@ Primary sources of truth:
 
 Use this order when continuing implementation:
 
-1. Add fuller agent/client examples around the workflow helper if a target MCP client needs setup-specific glue.
+1. Add Claude Code, Cursor, or other client examples around the workflow helper when a target client needs setup-specific glue.
 2. Continue opportunistic validation and privacy hardening as new storage, report, or workflow surfaces are added.
 
 Important current behavior:

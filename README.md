@@ -28,6 +28,7 @@ This repository contains design documentation and a local Python implementation 
 - `rust_sensei.agent_workflow.prepare_agent_lesson` composes workspace suggestions with the local workspace helper, supports caller-provided editor openers such as VS Code, and keeps generated lesson paths ready for attempt evidence.
 - `rust_sensei.agent_workflow.build_submit_attempt_request` builds attempt DTOs from prepared lesson workspaces, including generated relative file paths and current lesson file contents when present. It omits absolute `workspace_root` by default unless local diagnostics explicitly opt in.
 - `rust_sensei.agent_workflow.write_agent_lesson_report` writes the per-assignment report from the prepared workspace, submitted attempt evidence, and canonical assessment result.
+- `examples/codex_agent_workflow.py` shows Codex-oriented client glue around the workflow helper while keeping editor control and command execution outside the MCP server.
 - `rust_sensei.agent_workspace.prepare_lesson_workspace` creates or reuses the suggested local lesson directory and starter Cargo files without overwriting learner code.
 - `rust_sensei.agent_report.write_lesson_report` writes a stable per-assignment Markdown report after assessment with the canonical Rust Sensei assessment embedded as JSON. Human-readable report sections redact obvious local absolute path fragments while preserving canonical assessment JSON.
 - Adaptive lesson selection handlers live in `rust_sensei/domain/lesson_selection.py`, including `next_concepts` graph traversal, direct prerequisite reopening, branch target resolution, and deterministic prompt variant rotation. Deterministic scoring uses concept `completion_thresholds` to gate `continue` and `accelerate` decisions when thresholds are configured.
@@ -181,7 +182,7 @@ Latest known verification:
 
 Recommended implementation order:
 
-1. Add fuller agent/client examples around the new workflow helper if a target MCP client needs setup-specific glue.
+1. Add Claude Code, Cursor, or other client examples around the workflow helper when a target client needs setup-specific glue.
 2. Continue opportunistic validation and privacy hardening as new storage, report, or workflow surfaces are added.
 
 ## Documents
